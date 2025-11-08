@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+>>>>>>> 9b2d9ea88eae099b0e6067d1a137343394fb03f7
 # dependencies
 /node_modules
 /.pnp
@@ -32,6 +37,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+<<<<<<< HEAD
 
 # IDE
 .vscode/*
@@ -40,3 +46,5 @@ next-env.d.ts
 !.vscode/launch.json
 !.vscode/extensions.json
 .idea
+=======
+>>>>>>> 9b2d9ea88eae099b0e6067d1a137343394fb03f7
