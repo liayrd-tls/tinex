@@ -4,7 +4,9 @@
       "Bash(npm init:*)",
       "Bash(npm run build:*)",
       "Bash(node -e:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm test:*)"
     ],
     "deny": [],
     "ask": []

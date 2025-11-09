@@ -39,6 +39,7 @@ import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
 import { CreateTransactionInput, Transaction, Account, Category, Tag } from '@/core/models';
 import { convertMultipleCurrencies } from '@/shared/services/currencyService';
+import { cn } from '@/shared/utils/cn';
 
 // Icon mapping for categories
 const ICONS = {
@@ -192,10 +193,20 @@ export default function DashboardPage() {
       {/* Main Content */}
       <main className="px-4 py-4 space-y-4">
         {/* Balance Card */}
-        <Card className="bg-gradient-to-br from-primary/20 to-primary/5">
+        <Card className={cn(
+          "bg-gradient-to-br",
+          totalBalanceUSD >= 0
+            ? "from-primary/20 to-primary/5"
+            : "from-destructive/20 to-destructive/5"
+        )}>
           <CardHeader>
             <CardDescription>Total Balance (USD)</CardDescription>
-            <CardTitle className="text-3xl">${totalBalanceUSD.toFixed(2)}</CardTitle>
+            <CardTitle className={cn(
+              "text-3xl",
+              totalBalanceUSD < 0 && "text-destructive"
+            )}>
+              ${totalBalanceUSD.toFixed(2)}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4 text-xs">

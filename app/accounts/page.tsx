@@ -15,6 +15,7 @@ import { Plus, Wallet, Trash2 } from 'lucide-react';
 import { accountRepository } from '@/core/repositories/AccountRepository';
 import { Account, CreateAccountInput, CURRENCIES } from '@/core/models';
 import { convertMultipleCurrencies } from '@/shared/services/currencyService';
+import { cn } from '@/shared/utils/cn';
 
 export default function AccountsPage() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
@@ -123,10 +124,20 @@ export default function AccountsPage() {
       <main className="px-4 py-4 space-y-4">
         {/* Total Balance Summary */}
         {accounts.length > 0 && (
-          <Card className="bg-gradient-to-br from-primary/20 to-primary/5">
+          <Card className={cn(
+            "bg-gradient-to-br",
+            totalBalanceUSD >= 0
+              ? "from-primary/20 to-primary/5"
+              : "from-destructive/20 to-destructive/5"
+          )}>
             <CardHeader>
               <CardDescription>Total Balance (USD)</CardDescription>
-              <CardTitle className="text-3xl">${totalBalanceUSD.toFixed(2)}</CardTitle>
+              <CardTitle className={cn(
+                "text-3xl",
+                totalBalanceUSD < 0 && "text-destructive"
+              )}>
+                ${totalBalanceUSD.toFixed(2)}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">
@@ -180,7 +191,10 @@ export default function AccountsPage() {
                           <p className="text-xs text-muted-foreground capitalize">
                             {account.type.replace('_', ' ')}
                           </p>
-                          <p className="text-lg font-bold mt-2">
+                          <p className={cn(
+                            "text-lg font-bold mt-2",
+                            account.balance < 0 && "text-destructive"
+                          )}>
                             {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
                           </p>
                           {account.notes && (

@@ -203,7 +203,8 @@ export default function TransactionsPage() {
                         return (
                           <div
                             key={txn.id}
-                            className="flex items-center gap-3 p-3 relative overflow-hidden hover:bg-muted/30 transition-colors"
+                            onClick={() => router.push(`/transactions/${txn.id}`)}
+                            className="flex items-center gap-3 p-3 relative overflow-hidden hover:bg-muted/30 transition-colors cursor-pointer"
                           >
                             {/* Side gradient bar */}
                             {category && (

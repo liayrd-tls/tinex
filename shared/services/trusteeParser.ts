@@ -20,9 +20,19 @@ export async function parseTrusteePDF(
   fileBuffer: Buffer
 ): Promise<TrusteeStatementData> {
   try {
-    // Dynamic import to handle ESM/CJS module compatibility
-    const pdf = (await import('pdf-parse')) as any;
+    // Use require for CommonJS module (pdf-parse v1.1.1)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pdf = require('pdf-parse');
+
+    console.log('PDF parse function type:', typeof pdf);
+    console.log('Buffer type:', fileBuffer instanceof Buffer);
+    console.log('Buffer length:', fileBuffer?.length);
+
     const data = await pdf(fileBuffer);
+
+    console.log('PDF parsed successfully');
+    console.log('Text length:', data.text?.length);
+
     const text = data.text;
 
     // Extract period
@@ -43,7 +53,10 @@ export async function parseTrusteePDF(
     };
   } catch (error) {
     console.error('Error parsing Trustee PDF:', error);
-    throw new Error('Failed to parse PDF file. Please ensure it is a valid Trustee statement.');
+    console.error('Error name:', (error as Error)?.name);
+    console.error('Error message:', (error as Error)?.message);
+    console.error('Error stack:', (error as Error)?.stack);
+    throw error; // Throw original error to see full details
   }
 }
 
@@ -77,9 +90,10 @@ function parseTransactions(text: string): ParsedTransaction[] {
 
     if (inTransactionSection && line) {
       // Try to parse transaction line
-      // Format: "2025.11.01, 15:41 147 VELMART 31 KIEV UKR -2.18 EUR"
+      // Format: "2025.11.01, 15:41147 VELMART 31 KIEV UKR-2.18 EUR"
+      // Note: No space between time and description in actual PDF
       const transactionMatch = line.match(
-        /^(\d{4}\.\d{2}\.\d{2}),\s*(\d{2}:\d{2})\s+(.+?)\s+([-+]?\d+\.?\d*)\s+([A-Z]{3})$/
+        /^(\d{4}\.\d{2}\.\d{2}),\s*(\d{2}:\d{2})(.+?)([-+]?\d+\.?\d*)\s+([A-Z]{3})$/
       );
 
       if (transactionMatch) {
@@ -108,7 +122,7 @@ function parseTransactions(text: string): ParsedTransaction[] {
         });
       } else {
         // Handle multi-line descriptions (some transactions span multiple lines)
-        const multiLineMatch = line.match(/^(\d{4}\.\d{2}\.\d{2}),\s*(\d{2}:\d{2})\s+(.+)$/);
+        const multiLineMatch = line.match(/^(\d{4}\.\d{2}\.\d{2}),\s*(\d{2}:\d{2})(.+)$/);
         if (multiLineMatch) {
           const [, dateStr, timeStr, descStart] = multiLineMatch;
 

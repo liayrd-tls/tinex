@@ -89,8 +89,13 @@ const dateTime = new Date(`${dateStr}T${timeStr}`);
 
 #### 3. Bank Statement Import System
 
+**Architecture**:
+- PDF parsing happens **server-side** via API route (`/api/parse-pdf`)
+- Client uploads file to API, receives parsed transactions
+- Prevents large pdf-parse library from being included in client bundle
+
 **Trustee PDF Parser** (`shared/services/trusteeParser.ts`):
-- Uses `pdf-parse` library with dynamic import: `const pdf = await import('pdf-parse')`
+- Uses `pdf-parse` library with `require()` (CommonJS module, server-side only)
 - Parses date, time, description, amount (with sign), and currency
 - Creates unique hash for duplicate detection: `hash(date + description + amount + currency)`
 - Returns transactions with type already determined (negative amount = expense)
@@ -98,9 +103,12 @@ const dateTime = new Date(`${dateStr}T${timeStr}`);
 **Import Flow** (`app/import/page.tsx`):
 1. User selects account
 2. Uploads PDF file
-3. Parse → Preview transactions
-4. Import → Skip duplicates, create transactions
-5. Track in `importedTransactions` collection via `ImportedTransactionRepository`
+3. Client sends file to `/api/parse-pdf` endpoint
+4. Server parses PDF and returns transactions (dates serialized as ISO strings)
+5. Client converts date strings back to Date objects
+6. Preview transactions
+7. Import → Skip duplicates, create transactions
+8. Track in `importedTransactions` collection via `ImportedTransactionRepository`
 
 **Duplicate Prevention**:
 - `ImportedTransactionRepository.getImportedHashes()` returns Set of hashes
@@ -162,10 +170,11 @@ try {
 
 1. **Don't use `any` type**: Always define proper TypeScript interfaces, especially for chart tooltips and API responses.
 
-2. **Module imports for external libraries**: Some libraries (like `pdf-parse`) need special import handling:
+2. **Module imports for external libraries**: Some libraries (like `pdf-parse`) are CommonJS modules and need special import handling:
    ```typescript
-   // Use dynamic import with type assertion
-   const pdf = (await import('pdf-parse')) as any;
+   // Use require() for CommonJS modules like pdf-parse
+   // eslint-disable-next-line @typescript-eslint/no-var-requires
+   const pdf = require('pdf-parse');
    ```
 
 3. **Date handling**: Always preserve time information. Don't use just `Date` type - combine date and time inputs.

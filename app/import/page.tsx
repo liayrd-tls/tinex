@@ -8,7 +8,7 @@ import BottomNav from '@/shared/components/layout/BottomNav';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui';
 import { Upload, FileText, CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
-import { parseTrusteePDF, ParsedTransaction } from '@/shared/services/trusteeParser';
+import { ParsedTransaction, TrusteeStatementData } from '@/shared/services/trusteeParser';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { importedTransactionRepository } from '@/core/repositories/ImportedTransactionRepository';
 import { accountRepository } from '@/core/repositories/AccountRepository';
@@ -87,14 +87,42 @@ export default function ImportPage() {
     setError('');
 
     try {
-      // Read file as buffer
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      // Create form data with the file
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Parse PDF
-      const statementData = await parseTrusteePDF(buffer);
+      // Call API to parse PDF (server-side)
+      const response = await fetch('/api/parse-pdf', {
+        method: 'POST',
+        body: formData,
+      });
 
-      setParsedTransactions(statementData.transactions);
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to parse PDF');
+      }
+
+      const statementData: TrusteeStatementData = result.data;
+
+      // Convert date strings back to Date objects
+      const transactions = statementData.transactions.map(txn => ({
+        ...txn,
+        date: new Date(txn.date),
+      }));
+
+      setParsedTransactions(transactions);
+
+      // Store in sessionStorage for preview page
+      sessionStorage.setItem('parsedTransactions', JSON.stringify({
+        transactions: transactions.map(t => ({
+          ...t,
+          date: t.date.toISOString(),
+        })),
+        accountId: selectedAccount,
+        timestamp: Date.now(),
+      }));
+
       setImporting(false);
     } catch (err) {
       console.error('Error parsing file:', err);
@@ -315,10 +343,20 @@ export default function ImportPage() {
                 )}
               </div>
 
-              <Button onClick={handleImport} disabled={importing} className="w-full">
-                <Download className="h-4 w-4 mr-2" />
-                {importing ? 'Importing...' : `Import ${parsedTransactions.length} Transactions`}
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  onClick={() => router.push(`/import/preview?count=${parsedTransactions.length}`)}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Review & Edit
+                </Button>
+                <Button onClick={handleImport} disabled={importing} className="w-full">
+                  <Download className="h-4 w-4 mr-2" />
+                  {importing ? 'Importing...' : 'Import All'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
