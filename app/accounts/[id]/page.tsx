@@ -36,6 +36,7 @@ export default function AccountDetailPage() {
     });
 
     return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, accountId]);
 
   const loadAccountData = async (accountId: string, userId: string) => {
@@ -44,13 +45,17 @@ export default function AccountDetailPage() {
       const accountData = await accountRepository.getById(accountId);
       if (accountData && accountData.userId === userId) {
         setAccount(accountData);
+        console.log('Account loaded:', accountData);
       } else {
+        console.warn('Account not found or unauthorized');
         router.push('/accounts');
         return;
       }
 
       // Load transactions for this account
-      const accountTransactions = await transactionRepository.getByAccountId(accountId);
+      console.log('Loading transactions for account:', accountId);
+      const accountTransactions = await transactionRepository.getByAccountId(accountId, userId);
+      console.log('Transactions loaded:', accountTransactions.length, accountTransactions);
       setTransactions(accountTransactions);
     } catch (error) {
       console.error('Failed to load account data:', error);

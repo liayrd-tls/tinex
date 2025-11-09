@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import BottomNav from '@/shared/components/layout/BottomNav';
@@ -13,12 +14,14 @@ import AddAccountForm from '@/modules/accounts/AddAccountForm';
 import { Plus, Wallet, Trash2 } from 'lucide-react';
 import { accountRepository } from '@/core/repositories/AccountRepository';
 import { Account, CreateAccountInput, CURRENCIES } from '@/core/models';
+import { convertMultipleCurrencies } from '@/shared/services/currencyService';
 
 export default function AccountsPage() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [totalBalanceUSD, setTotalBalanceUSD] = useState<number>(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -39,6 +42,17 @@ export default function AccountsPage() {
     try {
       const userAccounts = await accountRepository.getByUserId(userId);
       setAccounts(userAccounts);
+
+      // Calculate total balance in USD
+      if (userAccounts.length > 0) {
+        const balancesInUSD = await convertMultipleCurrencies(
+          userAccounts.map((acc) => ({ amount: acc.balance, currency: acc.currency })),
+          'USD'
+        );
+        setTotalBalanceUSD(balancesInUSD);
+      } else {
+        setTotalBalanceUSD(0);
+      }
     } catch (error) {
       console.error('Failed to load accounts:', error);
     }
@@ -97,10 +111,6 @@ export default function AccountsPage() {
     return CURRENCIES.find((c) => c.value === currency)?.symbol || currency;
   };
 
-  const getTotalBalance = () => {
-    return accounts.reduce((sum, acc) => sum + acc.balance, 0);
-  };
-
   return (
     <div className="min-h-screen bg-background pb-20">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
@@ -115,8 +125,8 @@ export default function AccountsPage() {
         {accounts.length > 0 && (
           <Card className="bg-gradient-to-br from-primary/20 to-primary/5">
             <CardHeader>
-              <CardDescription>Total Balance</CardDescription>
-              <CardTitle className="text-3xl">${getTotalBalance().toFixed(2)}</CardTitle>
+              <CardDescription>Total Balance (USD)</CardDescription>
+              <CardTitle className="text-3xl">${totalBalanceUSD.toFixed(2)}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">
@@ -150,56 +160,64 @@ export default function AccountsPage() {
         {accounts.length > 0 && (
           <div className="space-y-3">
             {accounts.map((account) => (
-              <Card key={account.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                        <Wallet className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold truncate">{account.name}</h3>
-                          {account.isDefault && (
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary flex-shrink-0">
-                              Default
-                            </span>
+              <Card key={account.id} className="overflow-hidden">
+                <Link href={`/accounts/${account.id}`}>
+                  <CardContent className="p-4 hover:bg-muted/30 transition-colors cursor-pointer">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <Wallet className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-semibold truncate">{account.name}</h3>
+                            {account.isDefault && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary flex-shrink-0">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {account.type.replace('_', ' ')}
+                          </p>
+                          <p className="text-lg font-bold mt-2">
+                            {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
+                          </p>
+                          {account.notes && (
+                            <p className="text-xs text-muted-foreground mt-1">{account.notes}</p>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          {account.type.replace('_', ' ')}
-                        </p>
-                        <p className="text-lg font-bold mt-2">
-                          {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
-                        </p>
-                        {account.notes && (
-                          <p className="text-xs text-muted-foreground mt-1">{account.notes}</p>
-                        )}
                       </div>
                     </div>
-
-                    <div className="flex flex-col gap-1 ml-2">
-                      {!account.isDefault && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => handleSetDefault(account.id)}
-                        >
-                          Set Default
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteAccount(account.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
+                  </CardContent>
+                </Link>
+                <div className="flex gap-1 px-4 pb-3 border-t border-border/50 pt-2">
+                  {!account.isDefault && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs flex-1"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleSetDefault(account.id);
+                      }}
+                    >
+                      Set Default
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-destructive hover:text-destructive flex-1"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleDeleteAccount(account.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete
+                  </Button>
+                </div>
               </Card>
             ))}
           </div>

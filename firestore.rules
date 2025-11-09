@@ -26,8 +26,13 @@ service cloud.firestore {
 
     // Transactions collection
     match /transactions/{transactionId} {
+      // Allow reading if user owns the transaction
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Allow creating if user is setting themselves as the owner
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+
+      // Allow updating/deleting if user owns the transaction
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 

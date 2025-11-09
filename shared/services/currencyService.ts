@@ -5,9 +5,9 @@ let exchangeRatesCache: { rates: Record<string, number>; timestamp: number } | n
 const CACHE_DURATION = 3600000; // 1 hour in milliseconds
 
 /**
- * Fetches exchange rates from ExchangeRate-API (free tier)
- * Free tier: 1,500 requests/month
- * Alternative: https://api.frankfurter.app/latest?from=USD (unlimited, EU-based)
+ * Fetches exchange rates from our Next.js API route
+ * The API route handles the CurrencyFreaks API call server-side
+ * This keeps the API key secure and not exposed to the client
  */
 async function fetchExchangeRates(): Promise<Record<string, number>> {
   // Check cache first
@@ -16,28 +16,26 @@ async function fetchExchangeRates(): Promise<Record<string, number>> {
   }
 
   try {
-    // Using Frankfurter API (free, no API key required, unlimited requests)
-    const response = await fetch('https://api.frankfurter.app/latest?from=USD');
+    // Call our Next.js API route instead of external API directly
+    const response = await fetch('/api/currency');
 
     if (!response.ok) {
-      throw new Error('Failed to fetch exchange rates');
+      throw new Error('Failed to fetch exchange rates from API');
     }
 
     const data = await response.json();
 
-    // Frankfurter returns rates with USD as base (1 USD = X currency)
-    const rates: Record<string, number> = {
-      USD: 1,
-      ...data.rates,
-    };
+    if (!data.success || !data.rates) {
+      throw new Error('Invalid response from currency API');
+    }
 
     // Cache the rates
     exchangeRatesCache = {
-      rates,
+      rates: data.rates,
       timestamp: Date.now(),
     };
 
-    return rates;
+    return data.rates;
   } catch (error) {
     console.error('Failed to fetch exchange rates:', error);
 
@@ -60,7 +58,7 @@ function getFallbackRates(): Record<string, number> {
     AUD: 1.53,
     CHF: 0.88,
     CNY: 7.24,
-    UAH: 36.50,
+    UAH: 41.92,
   };
 }
 
@@ -79,11 +77,27 @@ export async function convertCurrency(
   try {
     const rates = await fetchExchangeRates();
 
-    // Convert to USD first, then to target currency
-    const amountInUSD = amount / rates[fromCurrency];
-    const convertedAmount = amountInUSD * rates[toCurrency];
+    // Check if rates exist for both currencies
+    if (!rates[fromCurrency] || !rates[toCurrency]) {
+      console.warn(`Missing exchange rate for ${fromCurrency} or ${toCurrency}`);
+      return amount; // Return original amount if rate is missing
+    }
 
-    return convertedAmount;
+    // CurrencyFreaks API: 1 USD = rates[currency]
+    // To convert FROM a currency TO USD: amount / rates[fromCurrency]
+    // To convert FROM USD TO a currency: amount * rates[toCurrency]
+
+    if (fromCurrency === 'USD') {
+      // From USD to another currency
+      return amount * rates[toCurrency];
+    } else if (toCurrency === 'USD') {
+      // From another currency to USD
+      return amount / rates[fromCurrency];
+    } else {
+      // From one currency to another (via USD)
+      const amountInUSD = amount / rates[fromCurrency];
+      return amountInUSD * rates[toCurrency];
+    }
   } catch (error) {
     console.error('Currency conversion failed:', error);
     // Return original amount if conversion fails
@@ -105,11 +119,25 @@ export async function convertMultipleCurrencies(
       return sum + item.amount;
     }
 
-    // Convert to USD first, then to target currency
-    const amountInUSD = item.amount / rates[item.currency];
-    const convertedAmount = amountInUSD * rates[toCurrency];
+    // Check if rate exists for the currency
+    if (!rates[item.currency] || !rates[toCurrency]) {
+      console.warn(`Missing exchange rate for ${item.currency} or ${toCurrency}`);
+      return sum + item.amount; // Add original amount if rate is missing
+    }
 
-    return sum + convertedAmount;
+    // CurrencyFreaks API: 1 USD = rates[currency]
+    if (item.currency === 'USD') {
+      // From USD to target currency
+      return sum + (item.amount * rates[toCurrency]);
+    } else if (toCurrency === 'USD') {
+      // From item currency to USD
+      return sum + (item.amount / rates[item.currency]);
+    } else {
+      // From one currency to another (via USD)
+      const amountInUSD = item.amount / rates[item.currency];
+      const convertedAmount = amountInUSD * rates[toCurrency];
+      return sum + convertedAmount;
+    }
   }, 0);
 
   return total;
@@ -129,11 +157,18 @@ export async function getExchangeRate(
   try {
     const rates = await fetchExchangeRates();
 
-    // Convert to USD first, then to target currency
-    const rateToUSD = 1 / rates[fromCurrency];
-    const rateToTarget = rateToUSD * rates[toCurrency];
-
-    return rateToTarget;
+    // CurrencyFreaks API: 1 USD = rates[currency]
+    if (fromCurrency === 'USD') {
+      // USD to another currency
+      return rates[toCurrency];
+    } else if (toCurrency === 'USD') {
+      // Another currency to USD
+      return 1 / rates[fromCurrency];
+    } else {
+      // One currency to another (via USD)
+      const rateToUSD = 1 / rates[fromCurrency];
+      return rateToUSD * rates[toCurrency];
+    }
   } catch (error) {
     console.error('Failed to get exchange rate:', error);
     return 1;

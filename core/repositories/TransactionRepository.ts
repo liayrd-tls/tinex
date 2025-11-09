@@ -91,16 +91,39 @@ export class TransactionRepository {
 
   /**
    * Get transactions by account
+   * Note: We need userId to comply with Firestore security rules
    */
-  async getByAccountId(accountId: string): Promise<Transaction[]> {
-    const q = query(
-      collection(db, this.collectionName),
-      where('accountId', '==', accountId),
-      orderBy('date', 'desc')
-    );
+  async getByAccountId(accountId: string, userId: string): Promise<Transaction[]> {
+    try {
+      const q = query(
+        collection(db, this.collectionName),
+        where('userId', '==', userId),
+        where('accountId', '==', accountId),
+        orderBy('date', 'desc')
+      );
 
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map((doc) => this.mapToTransaction(doc.id, doc.data()));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map((doc) => this.mapToTransaction(doc.id, doc.data()));
+    } catch (error) {
+      console.error('Error fetching transactions by account:', error);
+      // If the compound query fails (missing index), try without orderBy
+      try {
+        const q = query(
+          collection(db, this.collectionName),
+          where('userId', '==', userId),
+          where('accountId', '==', accountId)
+        );
+
+        const querySnapshot = await getDocs(q);
+        const transactions = querySnapshot.docs.map((doc) => this.mapToTransaction(doc.id, doc.data()));
+
+        // Sort in memory
+        return transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
+      } catch (fallbackError) {
+        console.error('Fallback query also failed:', fallbackError);
+        return [];
+      }
+    }
   }
 
   /**

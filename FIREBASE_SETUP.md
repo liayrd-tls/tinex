@@ -159,6 +159,81 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-BYMWSYMH8Z
 
 The app will use these environment variables if present, or fall back to the hardcoded values.
 
+## Firestore Indexes
+
+Compound indexes are required for certain queries. The indexes are defined in `firestore.indexes.json`.
+
+### Option 1: Automatic (Recommended)
+When you run the app and it attempts a compound query, Firebase will display an error message in the console with a direct link to create the index. Click the link to automatically create the required index.
+
+### Option 2: Firebase CLI
+```bash
+firebase deploy --only firestore:indexes
+```
+
+### Option 3: Manual Creation via Console
+Go to Firestore Database → Indexes and create the following composite indexes:
+
+#### Transactions Collection
+1. **Account Transactions Query** (Required for account detail page)
+   - Collection: `transactions`
+   - Fields:
+     - `userId` (Ascending)
+     - `accountId` (Ascending)
+     - `date` (Descending)
+   - Query scope: Collection
+
+2. **User Transactions by Date**
+   - Collection: `transactions`
+   - Fields:
+     - `userId` (Ascending)
+     - `date` (Descending)
+   - Query scope: Collection
+
+3. **User Transactions by Category**
+   - Collection: `transactions`
+   - Fields:
+     - `userId` (Ascending)
+     - `categoryId` (Ascending)
+     - `date` (Descending)
+   - Query scope: Collection
+
+## Troubleshooting Common Issues
+
+### "The query requires an index" error
+- Click the link in the error message to create the index
+- Or deploy the indexes using `firebase deploy --only firestore:indexes`
+- Indexes may take a few minutes to build
+- The app has fallback logic to query without indexes if needed
+
+### Transactions not showing in account detail page
+- Check browser console for errors
+- Verify the Firestore indexes are created (see above)
+- Make sure transactions have the `accountId` field populated
+
+### Total Balance showing NaN
+- This was caused by UAH currency not being in the previous API
+- The app now uses CurrencyFreaks API which includes UAH
+- Set `CURRENCY_API_KEY` in your `.env.local` for production use (see Currency API Setup below)
+- Clear your browser cache if the issue persists
+
+### Currency API Setup
+The app uses [CurrencyFreaks API](https://currencyfreaks.com/) for exchange rates:
+
+1. Sign up for a free account at https://currencyfreaks.com/
+2. Get your API key from the dashboard
+3. Add to `.env.local` (server-side only, NOT exposed to client):
+   ```
+   CURRENCY_API_KEY=your_api_key_here
+   ```
+
+**Important Security Note:**
+- The API key is stored as `CURRENCY_API_KEY` (without `NEXT_PUBLIC_` prefix)
+- This keeps the key server-side only and not exposed to the browser
+- The Next.js API route at `/api/currency` handles all external API calls
+- Free tier includes 1,000 requests per month
+- If no API key is set, the app falls back to approximate exchange rates
+
 ## Next Steps
 
 Once Firebase is configured:
@@ -173,3 +248,4 @@ Once Firebase is configured:
 - [Firebase Authentication Docs](https://firebase.google.com/docs/auth)
 - [Firestore Security Rules](https://firebase.google.com/docs/firestore/security/get-started)
 - [Firebase Storage](https://firebase.google.com/docs/storage)
+- [Firestore Indexes Guide](https://firebase.google.com/docs/firestore/query-data/indexing)
