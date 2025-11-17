@@ -28,7 +28,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
+import Input from '@/shared/components/ui/Input';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
@@ -91,10 +95,27 @@ export default function AnalyticsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [period, setPeriod] = useState<'week' | 'month' | 'year'>('month');
   const [chartSource, setChartSource] = useState<'total' | string>('total'); // 'total' or accountId
   const [showChart, setShowChart] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const router = useRouter();
+
+  // Week navigation state
+  const getWeekDates = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Monday start
+    const monday = new Date(d.setDate(diff));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    return { start: monday, end: sunday };
+  };
+
+  const [currentWeek, setCurrentWeek] = useState(() => getWeekDates(new Date()));
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -127,25 +148,44 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Get date range based on period
-  const getDateRange = () => {
-    const now = new Date();
-    let start: Date;
-
-    if (period === 'week') {
-      start = new Date(now);
-      start.setDate(now.getDate() - 7);
-    } else if (period === 'month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else {
-      start = new Date(now.getFullYear(), 0, 1);
-    }
-
-    return { start, end: now };
+  // Week navigation handlers
+  const goToPreviousWeek = () => {
+    const newStart = new Date(currentWeek.start);
+    newStart.setDate(newStart.getDate() - 7);
+    setCurrentWeek(getWeekDates(newStart));
   };
 
-  // Filter transactions by period
-  const { start, end } = getDateRange();
+  const goToNextWeek = () => {
+    const newStart = new Date(currentWeek.start);
+    newStart.setDate(newStart.getDate() + 7);
+    setCurrentWeek(getWeekDates(newStart));
+  };
+
+  const openDatePicker = () => {
+    setCustomStartDate(currentWeek.start.toISOString().split('T')[0]);
+    setCustomEndDate(currentWeek.end.toISOString().split('T')[0]);
+    setShowDatePicker(true);
+  };
+
+  const applyCustomDates = () => {
+    if (customStartDate && customEndDate) {
+      const start = new Date(customStartDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+      setCurrentWeek({ start, end });
+      setShowDatePicker(false);
+    }
+  };
+
+  const formatDateRange = () => {
+    const startStr = currentWeek.start.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+    const endStr = currentWeek.end.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${startStr} - ${endStr}`;
+  };
+
+  // Filter transactions by current week
+  const { start, end } = currentWeek;
   const periodTransactions = transactions.filter((txn) => {
     const txnDate = new Date(txn.date);
     return txnDate >= start && txnDate <= end;
@@ -186,12 +226,9 @@ export default function AnalyticsPage() {
 
   // Daily average
   const getDaysInPeriod = () => {
-    if (period === 'week') return 7;
-    if (period === 'month') return new Date().getDate();
-    // For year, calculate days from Jan 1 to today
-    const now = new Date();
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    return Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return diffDays;
   };
 
   const daysInPeriod = getDaysInPeriod();
@@ -204,7 +241,6 @@ export default function AnalyticsPage() {
   // Generate chart data
   const generateChartData = () => {
     const dataPoints: { date: string; balance: number }[] = [];
-    const numPoints = period === 'week' ? 7 : period === 'month' ? 30 : 12;
 
     // Filter transactions by source
     let filteredTxns = periodTransactions;
@@ -217,48 +253,27 @@ export default function AnalyticsPage() {
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    // Calculate cumulative balance for each point
+    // Calculate cumulative balance for each day in the period
     let runningBalance = 0;
 
-    if (period === 'week' || period === 'month') {
-      // Daily data points
-      for (let i = 0; i < numPoints; i++) {
-        const date = new Date(start);
-        date.setDate(start.getDate() + i);
+    // Daily data points
+    for (let i = 0; i < daysInPeriod; i++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
 
-        // Sum all transactions up to this date
-        const txnsUpToDate = sortedTxns.filter((t) =>
-          new Date(t.date) <= date
-        );
+      // Sum all transactions up to this date
+      const txnsUpToDate = sortedTxns.filter((t) =>
+        new Date(t.date) <= date
+      );
 
-        runningBalance = txnsUpToDate.reduce((sum, t) => {
-          return sum + (t.type === 'income' ? t.amount : -t.amount);
-        }, 0);
+      runningBalance = txnsUpToDate.reduce((sum, t) => {
+        return sum + (t.type === 'income' ? t.amount : -t.amount);
+      }, 0);
 
-        dataPoints.push({
-          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          balance: runningBalance,
-        });
-      }
-    } else {
-      // Monthly data points for year view
-      for (let i = 0; i < 12; i++) {
-        const date = new Date(start);
-        date.setMonth(start.getMonth() + i);
-
-        const txnsUpToDate = sortedTxns.filter((t) =>
-          new Date(t.date) <= date
-        );
-
-        runningBalance = txnsUpToDate.reduce((sum, t) => {
-          return sum + (t.type === 'income' ? t.amount : -t.amount);
-        }, 0);
-
-        dataPoints.push({
-          date: date.toLocaleDateString('en-US', { month: 'short' }),
-          balance: runningBalance,
-        });
-      }
+      dataPoints.push({
+        date: date.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }),
+        balance: runningBalance,
+      });
     }
 
     return dataPoints;
@@ -288,35 +303,7 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
-      <main className="px-4 py-4 space-y-4">
-        {/* Period Selector */}
-        <div className="flex gap-2">
-          <Button
-            variant={period === 'week' ? 'default' : 'outline'}
-            size="sm"
-            className="flex-1"
-            onClick={() => setPeriod('week')}
-          >
-            Week
-          </Button>
-          <Button
-            variant={period === 'month' ? 'default' : 'outline'}
-            size="sm"
-            className="flex-1"
-            onClick={() => setPeriod('month')}
-          >
-            Month
-          </Button>
-          <Button
-            variant={period === 'year' ? 'default' : 'outline'}
-            size="sm"
-            className="flex-1"
-            onClick={() => setPeriod('year')}
-          >
-            Year
-          </Button>
-        </div>
-
+      <main className="px-4 py-4 space-y-4 pb-32">
         {/* Balance Trend Chart */}
         {showChart && chartData.length > 0 && (
           <Card>
@@ -631,6 +618,97 @@ export default function AnalyticsPage() {
           </Card>
         )}
       </main>
+
+      {/* Week Navigation Panel */}
+      <div className="fixed bottom-16 left-0 right-0 bg-background/95 backdrop-blur border-t border-border z-30">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-10 w-10 p-0"
+            onClick={goToPreviousWeek}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+
+          <button
+            onClick={openDatePicker}
+            className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-muted/50 transition-colors"
+          >
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">{formatDateRange()}</span>
+          </button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-10 w-10 p-0"
+            onClick={goToNextWeek}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => setShowDatePicker(false)}
+          />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background border border-border rounded-lg shadow-xl z-50 w-80 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Select Date Range</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => setShowDatePicker(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Start Date</label>
+                <Input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">End Date</label>
+                <Input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowDatePicker(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={applyCustomDates}
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
 
       <BottomNav />
     </div>
