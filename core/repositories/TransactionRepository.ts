@@ -11,10 +11,12 @@ import {
   limit,
   Timestamp,
   QueryConstraint,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Transaction, CreateTransactionInput, UpdateTransactionInput } from '@/core/models';
 import { FIREBASE_COLLECTIONS } from '@/shared/config/constants';
+import { accountRepository } from './AccountRepository';
 
 export class TransactionRepository {
   private collectionName = FIREBASE_COLLECTIONS.TRANSACTIONS;
@@ -44,7 +46,31 @@ export class TransactionRepository {
 
     const docRef = await addDoc(collection(db, this.collectionName), transaction);
 
+    // Update account balance
+    await this.updateAccountBalance(input.accountId, input.amount, input.type);
+
     return docRef.id;
+  }
+
+  /**
+   * Update account balance based on transaction
+   */
+  private async updateAccountBalance(
+    accountId: string,
+    amount: number,
+    type: 'income' | 'expense' | 'transfer'
+  ): Promise<void> {
+    const account = await accountRepository.getById(accountId);
+    if (!account) return;
+
+    let newBalance = account.balance;
+    if (type === 'income') {
+      newBalance += amount;
+    } else if (type === 'expense') {
+      newBalance -= amount;
+    }
+
+    await accountRepository.updateBalance(accountId, newBalance);
   }
 
   /**
@@ -166,6 +192,13 @@ export class TransactionRepository {
    */
   async update(input: UpdateTransactionInput): Promise<void> {
     const { id, ...updateData } = input;
+
+    // Get old transaction to revert balance
+    const oldTransaction = await this.getById(id);
+    if (!oldTransaction) {
+      throw new Error('Transaction not found');
+    }
+
     const docRef = doc(db, this.collectionName, id);
 
     const updates: any = {
@@ -178,12 +211,58 @@ export class TransactionRepository {
     }
 
     await updateDoc(docRef, updates);
+
+    // Revert old balance change
+    await this.revertAccountBalance(
+      oldTransaction.accountId,
+      oldTransaction.amount,
+      oldTransaction.type
+    );
+
+    // Apply new balance change
+    await this.updateAccountBalance(
+      updateData.accountId || oldTransaction.accountId,
+      updateData.amount || oldTransaction.amount,
+      updateData.type || oldTransaction.type
+    );
+  }
+
+  /**
+   * Revert account balance (opposite of updateAccountBalance)
+   */
+  private async revertAccountBalance(
+    accountId: string,
+    amount: number,
+    type: 'income' | 'expense' | 'transfer'
+  ): Promise<void> {
+    const account = await accountRepository.getById(accountId);
+    if (!account) return;
+
+    let newBalance = account.balance;
+    if (type === 'income') {
+      newBalance -= amount; // Reverse income
+    } else if (type === 'expense') {
+      newBalance += amount; // Reverse expense
+    }
+
+    await accountRepository.updateBalance(accountId, newBalance);
   }
 
   /**
    * Delete a transaction
    */
   async delete(id: string): Promise<void> {
+    // Get transaction to revert balance
+    const transaction = await this.getById(id);
+    if (transaction) {
+      // Revert the balance change
+      await this.revertAccountBalance(
+        transaction.accountId,
+        transaction.amount,
+        transaction.type
+      );
+    }
+
     const docRef = doc(db, this.collectionName, id);
     await deleteDoc(docRef);
   }

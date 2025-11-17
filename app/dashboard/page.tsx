@@ -137,13 +137,7 @@ export default function DashboardPage() {
     try {
       await transactionRepository.create(user.uid, data, currency);
 
-      // Update account balance
-      const account = accounts.find((acc) => acc.id === data.accountId);
-      if (account) {
-        const balanceChange = data.type === 'income' ? data.amount : -data.amount;
-        await accountRepository.updateBalance(account.id, account.balance + balanceChange);
-      }
-
+      // Reload data to reflect balance changes (repository handles balance updates automatically)
       await loadData(user.uid);
       setShowAddTransaction(false);
       setShowQuickActions(false);
@@ -339,7 +333,8 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={txn.id}
-                    className="flex items-center gap-3 p-3 rounded-md bg-muted/30 relative overflow-hidden"
+                    onClick={() => router.push(`/transactions/${txn.id}`)}
+                    className="flex items-center gap-3 p-3 rounded-md bg-muted/30 relative overflow-hidden cursor-pointer hover:bg-muted/50 transition-colors"
                   >
                     {/* Side gradient bar */}
                     {category && (

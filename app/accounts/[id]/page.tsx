@@ -298,7 +298,8 @@ export default function AccountDetailPage() {
                   return (
                     <div
                       key={txn.id}
-                      className="flex items-center gap-3 p-3 rounded-md bg-muted/30 relative overflow-hidden"
+                      onClick={() => router.push(`/transactions/${txn.id}`)}
+                      className="flex items-center gap-3 p-3 rounded-md bg-muted/30 relative overflow-hidden cursor-pointer hover:bg-muted/50 transition-colors"
                     >
                       {/* Side gradient bar */}
                       {category && (

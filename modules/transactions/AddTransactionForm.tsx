@@ -11,7 +11,44 @@ import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
 import { CURRENCIES } from '@/core/models/account';
 import { cn } from '@/shared/utils/cn';
-import { X } from 'lucide-react';
+import {
+  X,
+  DollarSign,
+  Briefcase,
+  TrendingUp,
+  Plus,
+  Utensils,
+  ShoppingBag,
+  Car,
+  FileText,
+  Film,
+  Heart,
+  BookOpen,
+  MoreHorizontal,
+  Home,
+  Smartphone,
+  Coffee,
+  Gift,
+} from 'lucide-react';
+
+const ICONS = {
+  DollarSign,
+  Briefcase,
+  TrendingUp,
+  Plus,
+  Utensils,
+  ShoppingBag,
+  Car,
+  FileText,
+  Film,
+  Heart,
+  BookOpen,
+  MoreHorizontal,
+  Home,
+  Smartphone,
+  Coffee,
+  Gift,
+};
 
 interface AddTransactionFormProps {
   onSubmit: (data: CreateTransactionInput, currency: string) => Promise<void>;
@@ -27,6 +64,8 @@ export default function AddTransactionForm({ onSubmit, onCancel, accounts }: Add
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
 
   const {
     register,
@@ -196,21 +235,83 @@ export default function AddTransactionForm({ onSubmit, onCancel, accounts }: Add
         />
       </div>
 
-      {/* Category */}
-      <div>
+      {/* Category - Custom dropdown with icons */}
+      <div className="relative">
+        <input type="hidden" {...register('categoryId', { required: 'Category is required' })} />
         <label className="text-xs font-medium mb-1.5 block">Category</label>
-        <select
-          {...register('categoryId', { required: 'Category is required' })}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        <button
+          type="button"
+          onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+          className={cn(
+            "flex h-9 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+            errors.categoryId ? "border-destructive" : "border-input"
+          )}
           disabled={loading}
         >
-          <option value="">Select category</option>
-          {filteredCategories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
+          {selectedCategoryId ? (
+            <div className="flex items-center gap-2">
+              {(() => {
+                const cat = filteredCategories.find(c => c.id === selectedCategoryId);
+                if (!cat) return 'Select category';
+                const IconComponent = ICONS[cat.icon as keyof typeof ICONS] || MoreHorizontal;
+                return (
+                  <>
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: `${cat.color}20` }}
+                    >
+                      <IconComponent className="h-3 w-3" style={{ color: cat.color }} />
+                    </div>
+                    <span>{cat.name}</span>
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <span className="text-muted-foreground">Select category</span>
+          )}
+          <svg
+            className={cn("h-4 w-4 transition-transform", showCategoryDropdown && "rotate-180")}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Dropdown menu */}
+        {showCategoryDropdown && (
+          <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-60 overflow-auto">
+            {filteredCategories.map((cat) => {
+              const IconComponent = ICONS[cat.icon as keyof typeof ICONS] || MoreHorizontal;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategoryId(cat.id);
+                    setValue('categoryId', cat.id, { shouldValidate: true });
+                    setShowCategoryDropdown(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted transition-colors",
+                    selectedCategoryId === cat.id && "bg-muted"
+                  )}
+                >
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${cat.color}20` }}
+                  >
+                    <IconComponent className="h-4 w-4" style={{ color: cat.color }} />
+                  </div>
+                  <span>{cat.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {errors.categoryId && (
           <p className="mt-1 text-xs text-destructive">{errors.categoryId.message}</p>
         )}
