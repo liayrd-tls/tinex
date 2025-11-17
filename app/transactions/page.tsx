@@ -25,6 +25,7 @@ import {
   Gift,
   Plus,
   Filter,
+  X,
 } from 'lucide-react';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
@@ -61,6 +62,8 @@ export default function TransactionsPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [showCategoryPanel, setShowCategoryPanel] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -98,6 +101,28 @@ export default function TransactionsPage() {
 
   const getAccountName = (accountId: string) => {
     return accounts.find((acc) => acc.id === accountId)?.name || 'Unknown';
+  };
+
+  const handleCategoryIconClick = (e: React.MouseEvent, txn: Transaction) => {
+    e.stopPropagation(); // Prevent navigation to transaction detail
+    setSelectedTransaction(txn);
+    setShowCategoryPanel(true);
+  };
+
+  const handleCategoryChange = async (categoryId: string) => {
+    if (!user || !selectedTransaction) return;
+
+    try {
+      await transactionRepository.update({
+        id: selectedTransaction.id,
+        categoryId: categoryId,
+      });
+      setShowCategoryPanel(false);
+      setSelectedTransaction(null);
+      await loadData(user.uid);
+    } catch (error) {
+      console.error('Failed to update category:', error);
+    }
   };
 
   const filteredTransactions = transactions.filter((txn) => {
@@ -218,10 +243,12 @@ export default function TransactionsPage() {
 
                             {/* Category icon */}
                             <div
-                              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ml-2"
+                              onClick={(e) => handleCategoryIconClick(e, txn)}
+                              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ml-2 hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
                               style={{
                                 backgroundColor: category ? `${category.color}20` : '#6b728020',
                               }}
+                              title="Click to change category"
                             >
                               <IconComponent
                                 className="h-5 w-5"
@@ -285,6 +312,84 @@ export default function TransactionsPage() {
           </div>
         )}
       </main>
+
+      {/* Category Selection Side Panel */}
+      {showCategoryPanel && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => {
+              setShowCategoryPanel(false);
+              setSelectedTransaction(null);
+            }}
+          />
+          {/* Panel */}
+          <div className="fixed right-0 top-0 bottom-0 w-80 bg-background border-l border-border z-50 shadow-xl animate-in slide-in-from-right">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">Change Category</h3>
+                {selectedTransaction && (
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    {selectedTransaction.description}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => {
+                  setShowCategoryPanel(false);
+                  setSelectedTransaction(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-80px)]">
+              {categories.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No categories available
+                </p>
+              ) : (
+                categories.map((cat) => {
+                  const CatIcon = ICONS[cat.icon as keyof typeof ICONS] || MoreHorizontal;
+                  const isSelected = selectedTransaction?.categoryId === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleCategoryChange(cat.id)}
+                      className={cn(
+                        'w-full flex items-center gap-3 p-3 rounded-md transition-colors text-left',
+                        isSelected
+                          ? 'bg-primary/20 ring-2 ring-primary'
+                          : 'hover:bg-muted/50'
+                      )}
+                    >
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${cat.color}20` }}
+                      >
+                        <CatIcon className="h-5 w-5" style={{ color: cat.color }} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{cat.name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{cat.type}</p>
+                      </div>
+                      {isSelected && (
+                        <span className="text-xs px-2 py-1 rounded bg-primary/20 text-primary">
+                          Current
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <BottomNav />
     </div>

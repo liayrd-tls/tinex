@@ -30,7 +30,11 @@ import {
   Coffee,
   Gift,
   Plus,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react';
+import Input from '@/shared/components/ui/Input';
 import { accountRepository } from '@/core/repositories/AccountRepository';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
@@ -68,6 +72,8 @@ export default function AccountDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [newBalance, setNewBalance] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -137,6 +143,35 @@ export default function AccountDetailPage() {
     }
   };
 
+  const handleEditBalance = () => {
+    if (!account) return;
+    setNewBalance(account.balance.toString());
+    setEditingBalance(true);
+  };
+
+  const handleSaveBalance = async () => {
+    if (!user || !account) return;
+
+    const parsedBalance = parseFloat(newBalance);
+    if (isNaN(parsedBalance)) {
+      alert('Please enter a valid number');
+      return;
+    }
+
+    try {
+      await accountRepository.updateBalance(account.id, parsedBalance);
+      setEditingBalance(false);
+      await loadAccountData(accountId, user.uid);
+    } catch (error) {
+      console.error('Failed to update balance:', error);
+    }
+  };
+
+  const handleCancelEditBalance = () => {
+    setEditingBalance(false);
+    setNewBalance('');
+  };
+
   const getCurrencySymbol = (currency: string) => {
     return CURRENCIES.find((c) => c.value === currency)?.symbol || currency;
   };
@@ -190,9 +225,49 @@ export default function AccountDetailPage() {
         <Card className="bg-gradient-to-br from-primary/20 to-primary/5">
           <CardHeader>
             <CardDescription>Current Balance</CardDescription>
-            <CardTitle className="text-3xl">
-              {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
-            </CardTitle>
+            {editingBalance ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{getCurrencySymbol(account.currency)}</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={newBalance}
+                  onChange={(e) => setNewBalance(e.target.value)}
+                  className="text-2xl font-bold h-12"
+                  autoFocus
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 w-10 p-0 text-success"
+                  onClick={handleSaveBalance}
+                >
+                  <Check className="h-5 w-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 w-10 p-0 text-destructive"
+                  onClick={handleCancelEditBalance}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-3xl">
+                  {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={handleEditBalance}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4 text-xs">
