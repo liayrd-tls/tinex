@@ -7,3 +7,4 @@ export * from './imported-transaction';
 export * from './user';
 export * from './account';
 export * from './tag';
+export * from './user-settings';

@@ -17,11 +17,13 @@ export const ROUTES = {
 
 export const FIREBASE_COLLECTIONS = {
   USERS: 'users',
+  USER_SETTINGS: 'userSettings',
   TRANSACTIONS: 'transactions',
   CATEGORIES: 'categories',
   BUDGETS: 'budgets',
   IMPORT_SOURCES: 'importSources',
   IMPORT_JOBS: 'importJobs',
+  IMPORTED_TRANSACTIONS: 'importedTransactions',
   ACCOUNTS: 'accounts',
   TAGS: 'tags',
 } as const;
@@ -39,6 +41,8 @@ export const CURRENCY_SYMBOLS: Record<string, string> = {
   GBP: '£',
   JPY: '¥',
   INR: '₹',
+  UAH: '₴',
+  SGD: 'S$',
 } as const;
 
 export const DEFAULT_CURRENCY = 'USD';

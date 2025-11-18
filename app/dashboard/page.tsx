@@ -37,8 +37,9 @@ import { transactionRepository } from '@/core/repositories/TransactionRepository
 import { accountRepository } from '@/core/repositories/AccountRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
-import { CreateTransactionInput, Transaction, Account, Category, Tag } from '@/core/models';
-import { convertMultipleCurrencies } from '@/shared/services/currencyService';
+import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
+import { CreateTransactionInput, Transaction, Account, Category, Tag, UserSettings } from '@/core/models';
+import { convertMultipleCurrencies, convertCurrency, formatCurrency } from '@/shared/services/currencyService';
 import { cn } from '@/shared/utils/cn';
 
 // Icon mapping for categories
@@ -70,8 +71,9 @@ export default function DashboardPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [stats, setStats] = useState({ income: 0, expenses: 0, balance: 0, transactionCount: 0 });
-  const [totalBalanceUSD, setTotalBalanceUSD] = useState<number>(0);
+  const [totalBalance, setTotalBalance] = useState<number>(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -94,19 +96,23 @@ export default function DashboardPage() {
 
   const loadData = async (userId: string) => {
     try {
+      // Load user settings first to get base currency
+      const settings = await userSettingsRepository.getOrCreate(userId);
+      setUserSettings(settings);
+
       // Load accounts
       const userAccounts = await accountRepository.getByUserId(userId);
       setAccounts(userAccounts);
 
-      // Calculate total balance in USD
+      // Calculate total balance in base currency
       if (userAccounts.length > 0) {
-        const balancesInUSD = await convertMultipleCurrencies(
+        const balancesConverted = await convertMultipleCurrencies(
           userAccounts.map((acc) => ({ amount: acc.balance, currency: acc.currency })),
-          'USD'
+          settings.baseCurrency
         );
-        setTotalBalanceUSD(balancesInUSD);
+        setTotalBalance(balancesConverted);
       } else {
-        setTotalBalanceUSD(0);
+        setTotalBalance(0);
       }
 
       // Load categories and tags
@@ -121,11 +127,39 @@ export default function DashboardPage() {
       const txns = await transactionRepository.getByUserId(userId, { limitCount: 10 });
       setTransactions(txns);
 
-      // Get current month stats
+      // Get current month stats with currency conversion
       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
-      const monthStats = await transactionRepository.getStats(userId, startOfMonth, endOfMonth);
-      setStats(monthStats);
+      endOfMonth.setHours(23, 59, 59, 999);
+
+      // Get all transactions and filter by month
+      const allTxns = await transactionRepository.getByUserId(userId);
+      const monthTxns = allTxns.filter(txn => {
+        // Convert Firestore Timestamp to Date if needed
+        const txnDate = txn.date instanceof Date ? txn.date :
+          (txn.date as { toDate: () => Date }).toDate();
+        return txnDate >= startOfMonth && txnDate <= endOfMonth;
+      });
+
+      // Convert all transactions to base currency and calculate stats
+      let income = 0;
+      let expenses = 0;
+
+      for (const txn of monthTxns) {
+        const convertedAmount = await convertCurrency(txn.amount, txn.currency, settings.baseCurrency);
+        if (txn.type === 'income') {
+          income += convertedAmount;
+        } else if (txn.type === 'expense') {
+          expenses += convertedAmount;
+        }
+      }
+
+      setStats({
+        income,
+        expenses,
+        balance: income - expenses,
+        transactionCount: monthTxns.length,
+      });
     } catch (error) {
       console.error('Failed to load data:', error);
     }
@@ -189,17 +223,17 @@ export default function DashboardPage() {
         {/* Balance Card */}
         <Card className={cn(
           "bg-gradient-to-br",
-          totalBalanceUSD >= 0
+          totalBalance >= 0
             ? "from-primary/20 to-primary/5"
             : "from-destructive/20 to-destructive/5"
         )}>
           <CardHeader>
-            <CardDescription>Total Balance (USD)</CardDescription>
+            <CardDescription>Total Balance ({userSettings?.baseCurrency || 'USD'})</CardDescription>
             <CardTitle className={cn(
               "text-3xl",
-              totalBalanceUSD < 0 && "text-destructive"
+              totalBalance < 0 && "text-destructive"
             )}>
-              ${totalBalanceUSD.toFixed(2)}
+              {formatCurrency(totalBalance, userSettings?.baseCurrency || 'USD')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -210,11 +244,11 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center gap-1 text-success">
                 <TrendingUp className="h-3 w-3" />
-                <span>Income: ${stats.income.toFixed(2)}</span>
+                <span>Income: {formatCurrency(stats.income, userSettings?.baseCurrency || 'USD')}</span>
               </div>
               <div className="flex items-center gap-1 text-destructive">
                 <TrendingDown className="h-3 w-3" />
-                <span>Expenses: ${stats.expenses.toFixed(2)}</span>
+                <span>Expenses: {formatCurrency(stats.expenses, userSettings?.baseCurrency || 'USD')}</span>
               </div>
             </div>
           </CardContent>
@@ -287,7 +321,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-2">
               <CardDescription>This Month</CardDescription>
               <CardTitle className="text-2xl text-destructive">
-                ${stats.expenses.toFixed(2)}
+                {formatCurrency(stats.expenses, userSettings?.baseCurrency || 'USD')}
               </CardTitle>
             </CardHeader>
             <CardContent>

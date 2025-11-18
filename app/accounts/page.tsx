@@ -13,16 +13,18 @@ import FAB from '@/shared/components/ui/FAB';
 import AddAccountForm from '@/modules/accounts/AddAccountForm';
 import { Plus, Wallet, Trash2 } from 'lucide-react';
 import { accountRepository } from '@/core/repositories/AccountRepository';
-import { Account, CreateAccountInput, CURRENCIES } from '@/core/models';
-import { convertMultipleCurrencies } from '@/shared/services/currencyService';
+import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
+import { Account, CreateAccountInput, CURRENCIES, UserSettings } from '@/core/models';
+import { convertMultipleCurrencies, formatCurrency } from '@/shared/services/currencyService';
 import { cn } from '@/shared/utils/cn';
 
 export default function AccountsPage() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [totalBalanceUSD, setTotalBalanceUSD] = useState<number>(0);
+  const [totalBalance, setTotalBalance] = useState<number>(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -41,18 +43,23 @@ export default function AccountsPage() {
 
   const loadAccounts = async (userId: string) => {
     try {
-      const userAccounts = await accountRepository.getByUserId(userId);
-      setAccounts(userAccounts);
+      const [userAccounts, settings] = await Promise.all([
+        accountRepository.getByUserId(userId),
+        userSettingsRepository.getOrCreate(userId),
+      ]);
 
-      // Calculate total balance in USD
+      setAccounts(userAccounts);
+      setUserSettings(settings);
+
+      // Calculate total balance in base currency
       if (userAccounts.length > 0) {
-        const balancesInUSD = await convertMultipleCurrencies(
+        const balancesConverted = await convertMultipleCurrencies(
           userAccounts.map((acc) => ({ amount: acc.balance, currency: acc.currency })),
-          'USD'
+          settings.baseCurrency
         );
-        setTotalBalanceUSD(balancesInUSD);
+        setTotalBalance(balancesConverted);
       } else {
-        setTotalBalanceUSD(0);
+        setTotalBalance(0);
       }
     } catch (error) {
       console.error('Failed to load accounts:', error);
@@ -126,17 +133,17 @@ export default function AccountsPage() {
         {accounts.length > 0 && (
           <Card className={cn(
             "bg-gradient-to-br",
-            totalBalanceUSD >= 0
+            totalBalance >= 0
               ? "from-primary/20 to-primary/5"
               : "from-destructive/20 to-destructive/5"
           )}>
             <CardHeader>
-              <CardDescription>Total Balance (USD)</CardDescription>
+              <CardDescription>Total Balance ({userSettings?.baseCurrency || 'USD'})</CardDescription>
               <CardTitle className={cn(
                 "text-3xl",
-                totalBalanceUSD < 0 && "text-destructive"
+                totalBalance < 0 && "text-destructive"
               )}>
-                ${totalBalanceUSD.toFixed(2)}
+                {formatCurrency(totalBalance, userSettings?.baseCurrency || 'USD')}
               </CardTitle>
             </CardHeader>
             <CardContent>

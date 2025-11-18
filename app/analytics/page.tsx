@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -37,7 +37,9 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaCh
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { accountRepository } from '@/core/repositories/AccountRepository';
-import { Transaction, Category, Account } from '@/core/models';
+import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
+import { Transaction, Category, Account, UserSettings, Currency } from '@/core/models';
+import { formatCurrency, convertCurrency } from '@/shared/services/currencyService';
 import { cn } from '@/shared/utils/cn';
 
 // Icon mapping for categories
@@ -67,6 +69,7 @@ interface TooltipProps {
     payload: {
       date: string;
       balance: number;
+      currency?: string;
     };
   }>;
 }
@@ -74,6 +77,7 @@ interface TooltipProps {
 function CustomTooltip({ active, payload }: TooltipProps) {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    const currency = (data.currency || 'USD') as Currency;
     return (
       <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
         <p className="text-xs text-muted-foreground mb-1">{data.date}</p>
@@ -81,7 +85,7 @@ function CustomTooltip({ active, payload }: TooltipProps) {
           'text-sm font-semibold',
           data.balance >= 0 ? 'text-success' : 'text-destructive'
         )}>
-          ${data.balance.toFixed(2)}
+          {formatCurrency(data.balance, currency)}
         </p>
       </div>
     );
@@ -95,9 +99,16 @@ export default function AnalyticsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [chartSource, setChartSource] = useState<'total' | string>('total'); // 'total' or accountId
   const [showChart, setShowChart] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [calculatingStats, setCalculatingStats] = useState(false);
+  const [convertedStats, setConvertedStats] = useState({
+    totalIncome: 0,
+    totalExpenses: 0,
+    categoryTotals: {} as Record<string, number>,
+  });
   const router = useRouter();
 
   // Week navigation state
@@ -134,15 +145,17 @@ export default function AnalyticsPage() {
 
   const loadData = async (userId: string) => {
     try {
-      const [txns, userCategories, userAccounts] = await Promise.all([
+      const [txns, userCategories, userAccounts, settings] = await Promise.all([
         transactionRepository.getByUserId(userId),
         categoryRepository.getByUserId(userId),
         accountRepository.getByUserId(userId),
+        userSettingsRepository.getOrCreate(userId),
       ]);
 
       setTransactions(txns);
       setCategories(userCategories);
       setAccounts(userAccounts);
+      setUserSettings(settings);
     } catch (error) {
       console.error('Failed to load analytics data:', error);
     }
@@ -184,29 +197,91 @@ export default function AnalyticsPage() {
     return `${startStr} - ${endStr}`;
   };
 
-  // Filter transactions by current week
+  // Filter transactions by current week - use useMemo to prevent recreating array
   const { start, end } = currentWeek;
-  const periodTransactions = transactions.filter((txn) => {
-    const txnDate = new Date(txn.date);
-    return txnDate >= start && txnDate <= end;
-  });
+  const periodTransactions = useMemo(() => {
+    return transactions.filter((txn) => {
+      const txnDate = new Date(txn.date);
+      return txnDate >= start && txnDate <= end;
+    });
+  }, [transactions, start, end]);
 
-  // Calculate totals
-  const totalIncome = periodTransactions
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+  // Convert transactions to base currency whenever period or transactions change
+  useEffect(() => {
+    const convertTransactions = async () => {
+      if (!userSettings) {
+        setConvertedStats({
+          totalIncome: 0,
+          totalExpenses: 0,
+          categoryTotals: {},
+        });
+        setCalculatingStats(false);
+        return;
+      }
 
-  const totalExpenses = periodTransactions
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+      if (periodTransactions.length === 0) {
+        setConvertedStats({
+          totalIncome: 0,
+          totalExpenses: 0,
+          categoryTotals: {},
+        });
+        setCalculatingStats(false);
+        return;
+      }
 
+      setCalculatingStats(true);
+
+      try {
+        let income = 0;
+        let expenses = 0;
+        const categoryTotals: Record<string, number> = {};
+
+        // Convert each transaction to base currency
+        for (const txn of periodTransactions) {
+          const convertedAmount = await convertCurrency(
+            txn.amount,
+            txn.currency,
+            userSettings.baseCurrency
+          );
+
+          if (txn.type === 'income') {
+            income += convertedAmount;
+          } else if (txn.type === 'expense') {
+            expenses += convertedAmount;
+          }
+
+          // Track category totals
+          if (!categoryTotals[txn.categoryId]) {
+            categoryTotals[txn.categoryId] = 0;
+          }
+          categoryTotals[txn.categoryId] += convertedAmount;
+        }
+
+        setConvertedStats({
+          totalIncome: income,
+          totalExpenses: expenses,
+          categoryTotals,
+        });
+      } catch (error) {
+        console.error('Failed to convert transactions:', error);
+      } finally {
+        setCalculatingStats(false);
+      }
+    };
+
+    convertTransactions();
+  }, [periodTransactions, userSettings]);
+
+  // Use converted stats
+  const totalIncome = convertedStats.totalIncome;
+  const totalExpenses = convertedStats.totalExpenses;
   const netBalance = totalIncome - totalExpenses;
 
-  // Category breakdown
+  // Category breakdown using converted totals
   const categoryBreakdown = categories
     .map((cat) => {
       const catTransactions = periodTransactions.filter((t) => t.categoryId === cat.id);
-      const total = catTransactions.reduce((sum, t) => sum + t.amount, 0);
+      const total = convertedStats.categoryTotals[cat.id] || 0;
       const count = catTransactions.length;
       const percentage =
         cat.type === 'expense' && totalExpenses > 0 ? (total / totalExpenses) * 100 : 0;
@@ -238,55 +313,76 @@ export default function AnalyticsPage() {
   // Savings rate
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
 
-  // Generate chart data
-  const generateChartData = () => {
-    const dataPoints: { date: string; balance: number }[] = [];
+  // Generate chart data with currency conversion
+  const [chartData, setChartData] = useState<{ date: string; balance: number; currency?: string }[]>([]);
 
-    // Filter transactions by source
-    let filteredTxns = periodTransactions;
-    if (chartSource !== 'total') {
-      filteredTxns = periodTransactions.filter((t) => t.accountId === chartSource);
-    }
+  // Memoize chart generation dependencies to prevent infinite loops
+  const chartKey = useMemo(() => {
+    return `${periodTransactions.length}-${chartSource}-${userSettings?.baseCurrency}-${start.getTime()}-${daysInPeriod}`;
+  }, [periodTransactions.length, chartSource, userSettings?.baseCurrency, start, daysInPeriod]);
 
-    // Sort transactions by date
-    const sortedTxns = [...filteredTxns].sort((a, b) =>
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+  useEffect(() => {
+    const generateChartData = async () => {
+      if (!userSettings) {
+        setChartData([]);
+        return;
+      }
 
-    // Calculate cumulative balance for each day in the period
-    let runningBalance = 0;
+      const dataPoints: { date: string; balance: number; currency?: string }[] = [];
 
-    // Daily data points
-    for (let i = 0; i < daysInPeriod; i++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
+      // Filter transactions by source
+      let filteredTxns = periodTransactions;
+      if (chartSource !== 'total') {
+        filteredTxns = periodTransactions.filter((t) => t.accountId === chartSource);
+      }
 
-      // Sum all transactions up to this date
-      const txnsUpToDate = sortedTxns.filter((t) =>
-        new Date(t.date) <= date
+      // Sort transactions by date
+      const sortedTxns = [...filteredTxns].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
       );
 
-      runningBalance = txnsUpToDate.reduce((sum, t) => {
-        return sum + (t.type === 'income' ? t.amount : -t.amount);
-      }, 0);
+      // Daily data points
+      for (let i = 0; i < daysInPeriod; i++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
 
-      dataPoints.push({
-        date: date.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }),
-        balance: runningBalance,
-      });
-    }
+        // Sum all transactions up to this date (converted to base currency)
+        const txnsUpToDate = sortedTxns.filter((t) =>
+          new Date(t.date) <= date
+        );
 
-    return dataPoints;
-  };
+        let runningBalance = 0;
+        for (const t of txnsUpToDate) {
+          const convertedAmount = await convertCurrency(
+            t.amount,
+            t.currency,
+            userSettings.baseCurrency
+          );
+          runningBalance += (t.type === 'income' ? convertedAmount : -convertedAmount);
+        }
 
-  const chartData = generateChartData();
+        dataPoints.push({
+          date: date.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }),
+          balance: runningBalance,
+          currency: userSettings.baseCurrency,
+        });
+      }
 
-  if (loading) {
+      setChartData(dataPoints);
+    };
+
+    generateChartData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartKey]);
+
+  if (loading || calculatingStats) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3"></div>
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <p className="text-sm text-muted-foreground">
+            {loading ? 'Loading...' : 'Converting currencies...'}
+          </p>
         </div>
       </div>
     );
@@ -367,7 +463,12 @@ export default function AnalyticsPage() {
                     tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.6 }}
                     tickLine={false}
                     axisLine={{ stroke: 'currentColor', opacity: 0.1 }}
-                    tickFormatter={(value) => `$${value}`}
+                    tickFormatter={(value) => {
+                      const currency = userSettings?.baseCurrency || 'USD';
+                      // Simple formatter for Y-axis - just show symbol and rounded value
+                      const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'UAH' ? '₴' : '$';
+                      return `${symbol}${value}`;
+                    }}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Area
@@ -389,7 +490,10 @@ export default function AnalyticsPage() {
                     'text-lg font-bold',
                     chartData[chartData.length - 1]?.balance >= 0 ? 'text-success' : 'text-destructive'
                   )}>
-                    ${chartData[chartData.length - 1]?.balance.toFixed(2) || '0.00'}
+                    {formatCurrency(
+                      chartData[chartData.length - 1]?.balance || 0,
+                      userSettings?.baseCurrency || 'USD'
+                    )}
                   </p>
                 </div>
                 <div className="text-right">
@@ -399,7 +503,10 @@ export default function AnalyticsPage() {
                     (chartData[chartData.length - 1]?.balance - chartData[0]?.balance) >= 0 ? 'text-success' : 'text-destructive'
                   )}>
                     {(chartData[chartData.length - 1]?.balance - chartData[0]?.balance) >= 0 ? '+' : ''}
-                    ${((chartData[chartData.length - 1]?.balance || 0) - (chartData[0]?.balance || 0)).toFixed(2)}
+                    {formatCurrency(
+                      Math.abs((chartData[chartData.length - 1]?.balance || 0) - (chartData[0]?.balance || 0)),
+                      userSettings?.baseCurrency || 'USD'
+                    )}
                   </p>
                 </div>
               </div>
@@ -427,9 +534,11 @@ export default function AnalyticsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">Income</p>
               </div>
-              <p className="text-2xl font-bold text-success">${totalIncome.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-success">
+                {formatCurrency(totalIncome, userSettings?.baseCurrency || 'USD')}
+              </p>
               <p className="text-xs text-muted-foreground mt-1">
-                ${avgDailyIncome.toFixed(2)}/day
+                {formatCurrency(avgDailyIncome, userSettings?.baseCurrency || 'USD')}/day
               </p>
             </CardContent>
           </Card>
@@ -442,9 +551,11 @@ export default function AnalyticsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">Expenses</p>
               </div>
-              <p className="text-2xl font-bold text-destructive">${totalExpenses.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-destructive">
+                {formatCurrency(totalExpenses, userSettings?.baseCurrency || 'USD')}
+              </p>
               <p className="text-xs text-muted-foreground mt-1">
-                ${avgDailyExpense.toFixed(2)}/day
+                {formatCurrency(avgDailyExpense, userSettings?.baseCurrency || 'USD')}/day
               </p>
             </CardContent>
           </Card>
@@ -462,7 +573,8 @@ export default function AnalyticsPage() {
                     netBalance >= 0 ? 'text-success' : 'text-destructive'
                   )}
                 >
-                  {netBalance >= 0 ? '+' : ''}${netBalance.toFixed(2)}
+                  {netBalance >= 0 ? '+' : ''}
+                  {formatCurrency(Math.abs(netBalance), userSettings?.baseCurrency || 'USD')}
                 </p>
               </div>
               <div className="text-right">
@@ -509,7 +621,9 @@ export default function AnalyticsPage() {
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-semibold">${cat.total.toFixed(2)}</p>
+                        <p className="text-sm font-semibold">
+                          {formatCurrency(cat.total, userSettings?.baseCurrency || 'USD')}
+                        </p>
                         <p className="text-xs text-muted-foreground">{cat.percentage.toFixed(1)}%</p>
                       </div>
                     </div>
@@ -559,7 +673,9 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-semibold text-success">${cat.total.toFixed(2)}</p>
+                      <p className="text-sm font-semibold text-success">
+                        {formatCurrency(cat.total, userSettings?.baseCurrency || 'USD')}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {incomePercentage.toFixed(1)}%
                       </p>

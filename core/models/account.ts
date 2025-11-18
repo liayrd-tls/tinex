@@ -1,5 +1,5 @@
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'investment' | 'savings' | 'other';
-export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'UAH';
+export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD' | 'CHF' | 'CNY' | 'UAH' | 'SGD';
 
 export interface Account {
   id: string;
@@ -75,4 +75,5 @@ export const CURRENCIES: { value: Currency; label: string; symbol: string }[] = 
   { value: 'CHF', label: 'Swiss Franc', symbol: 'CHF' },
   { value: 'CNY', label: 'Chinese Yuan', symbol: '¥' },
   { value: 'UAH', label: 'Ukrainian Hryvnia', symbol: '₴' },
+  { value: 'SGD', label: 'Singapore Dollar', symbol: 'S$' },
 ];

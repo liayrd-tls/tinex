@@ -10,18 +10,20 @@ import { Button } from '@/shared/components/ui';
 import Modal from '@/shared/components/ui/Modal';
 import FAB from '@/shared/components/ui/FAB';
 import AddAccountForm from '@/modules/accounts/AddAccountForm';
-import { Plus, Wallet, Trash2, Tag, FolderOpen, ChevronRight, Upload, AlertTriangle, Download, Smartphone } from 'lucide-react';
+import { Plus, Wallet, Trash2, Tag, FolderOpen, ChevronRight, Upload, AlertTriangle, Download, Smartphone, Globe } from 'lucide-react';
 import { accountRepository } from '@/core/repositories/AccountRepository';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
 import { importedTransactionRepository } from '@/core/repositories/ImportedTransactionRepository';
-import { Account, CreateAccountInput, CURRENCIES } from '@/core/models';
+import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
+import { Account, CreateAccountInput, CURRENCIES, UserSettings, Currency } from '@/core/models';
 
 export default function SettingsPage() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
@@ -32,7 +34,10 @@ export default function SettingsPage() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser({ uid: currentUser.uid });
-        await loadAccounts(currentUser.uid);
+        await Promise.all([
+          loadAccounts(currentUser.uid),
+          loadUserSettings(currentUser.uid),
+        ]);
       } else {
         router.push('/auth');
       }
@@ -77,6 +82,15 @@ export default function SettingsPage() {
     }
   };
 
+  const loadUserSettings = async (userId: string) => {
+    try {
+      const settings = await userSettingsRepository.getOrCreate(userId);
+      setUserSettings(settings);
+    } catch (error) {
+      console.error('Failed to load user settings:', error);
+    }
+  };
+
   const handleAddAccount = async (data: CreateAccountInput) => {
     if (!user) return;
 
@@ -110,6 +124,18 @@ export default function SettingsPage() {
       await loadAccounts(user.uid);
     } catch (error) {
       console.error('Failed to set default account:', error);
+    }
+  };
+
+  const handleBaseCurrencyChange = async (currency: Currency) => {
+    if (!user) return;
+
+    try {
+      await userSettingsRepository.update(user.uid, { baseCurrency: currency });
+      await loadUserSettings(user.uid);
+    } catch (error) {
+      console.error('Failed to update base currency:', error);
+      alert('Failed to update base currency. Please try again.');
     }
   };
 
@@ -326,6 +352,38 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        {/* Base Currency */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Display Currency</CardTitle>
+            <CardDescription>
+              Choose your preferred currency for displaying totals and analytics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Globe className="h-4 w-4" />
+                <span>All balances and analytics will be converted to this currency</span>
+              </div>
+              <select
+                value={userSettings?.baseCurrency || 'USD'}
+                onChange={(e) => handleBaseCurrencyChange(e.target.value as Currency)}
+                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {CURRENCIES.map((currency) => (
+                  <option key={currency.value} value={currency.value}>
+                    {currency.symbol} {currency.label} ({currency.value})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Individual transaction amounts will still show in their original currency
+              </p>
+            </div>
           </CardContent>
         </Card>
 
