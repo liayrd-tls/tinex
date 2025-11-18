@@ -100,9 +100,24 @@ export default function DashboardPage() {
       const settings = await userSettingsRepository.getOrCreate(userId);
       setUserSettings(settings);
 
+      // Load transactions first to calculate transaction counts per account
+      const allTxns = await transactionRepository.getByUserId(userId);
+
       // Load accounts
       const userAccounts = await accountRepository.getByUserId(userId);
-      setAccounts(userAccounts);
+
+      // Calculate transaction count per account
+      const accountsWithCount = userAccounts.map(account => ({
+        ...account,
+        transactionCount: allTxns.filter(txn => txn.accountId === account.id).length,
+      }));
+
+      // Sort by transaction count and take top 3
+      const topAccounts = accountsWithCount
+        .sort((a, b) => b.transactionCount - a.transactionCount)
+        .slice(0, 3);
+
+      setAccounts(topAccounts);
 
       // Calculate total balance in base currency
       if (userAccounts.length > 0) {
@@ -123,7 +138,7 @@ export default function DashboardPage() {
       setCategories(userCategories);
       setTags(userTags);
 
-      // Load transactions
+      // Load recent transactions (limited to 10)
       const txns = await transactionRepository.getByUserId(userId, { limitCount: 10 });
       setTransactions(txns);
 
@@ -132,8 +147,7 @@ export default function DashboardPage() {
       const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
       endOfMonth.setHours(23, 59, 59, 999);
 
-      // Get all transactions and filter by month
-      const allTxns = await transactionRepository.getByUserId(userId);
+      // Filter transactions by month
       const monthTxns = allTxns.filter(txn => {
         // Convert Firestore Timestamp to Date if needed
         const txnDate = txn.date instanceof Date ? txn.date :
@@ -254,41 +268,43 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Accounts Overview */}
+        {/* Accounts Overview - Top 3 by transaction count */}
         {accounts.length > 0 && (
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Accounts</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => router.push('/settings')}
-                >
-                  Manage
-                </Button>
+                <CardTitle className="text-base">Top Accounts</CardTitle>
+                <Link href="/accounts">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    View All
+                  </Button>
+                </Link>
               </div>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {accounts.map((account) => (
-                <Link
-                  key={account.id}
-                  href={`/accounts/${account.id}`}
-                  className="flex items-center justify-between p-2 rounded-md bg-muted/30 hover:bg-muted/50 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <Wallet className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{account.name}</p>
-                      <p className="text-xs text-muted-foreground">{account.type}</p>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
+                {accounts.map((account) => (
+                  <Link
+                    key={account.id}
+                    href={`/accounts/${account.id}`}
+                    className="block p-3 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <Wallet className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <p className="text-sm font-medium truncate">{account.name}</p>
+                      </div>
+                      <p className="text-sm font-semibold flex-shrink-0">
+                        {account.currency} {account.balance.toFixed(2)}
+                      </p>
                     </div>
-                  </div>
-                  <p className="text-sm font-semibold">
-                    {account.currency} {account.balance.toFixed(2)}
-                  </p>
-                </Link>
-              ))}
+                  </Link>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}

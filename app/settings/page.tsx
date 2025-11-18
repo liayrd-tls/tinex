@@ -2,29 +2,36 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { onAuthStateChanged } from 'firebase/auth';
+import Link from 'next/link';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import BottomNav from '@/shared/components/layout/BottomNav';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui';
-import Modal from '@/shared/components/ui/Modal';
-import FAB from '@/shared/components/ui/FAB';
-import AddAccountForm from '@/modules/accounts/AddAccountForm';
-import { Plus, Wallet, Trash2, Tag, FolderOpen, ChevronRight, Upload, AlertTriangle, Download, Smartphone, Globe } from 'lucide-react';
-import { accountRepository } from '@/core/repositories/AccountRepository';
+import {
+  User,
+  Globe,
+  Download,
+  Smartphone,
+  Tag,
+  FolderOpen,
+  Upload,
+  LogOut,
+  Trash2,
+  AlertTriangle,
+} from 'lucide-react';
+import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
+import { accountRepository } from '@/core/repositories/AccountRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
 import { importedTransactionRepository } from '@/core/repositories/ImportedTransactionRepository';
-import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
-import { Account, CreateAccountInput, CURRENCIES, UserSettings, Currency } from '@/core/models';
+import { UserSettings, Currency, CURRENCIES } from '@/core/models';
 
-export default function SettingsPage() {
-  const [user, setUser] = useState<{ uid: string } | null>(null);
+export default function ProfilePage() {
+  const [user, setUser] = useState<{ uid: string; email: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [accounts, setAccounts] = useState<Account[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
-  const [showAddAccount, setShowAddAccount] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -33,11 +40,8 @@ export default function SettingsPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setUser({ uid: currentUser.uid });
-        await Promise.all([
-          loadAccounts(currentUser.uid),
-          loadUserSettings(currentUser.uid),
-        ]);
+        setUser({ uid: currentUser.uid, email: currentUser.email });
+        await loadUserSettings(currentUser.uid);
       } else {
         router.push('/auth');
       }
@@ -73,57 +77,12 @@ export default function SettingsPage() {
     };
   }, []);
 
-  const loadAccounts = async (userId: string) => {
-    try {
-      const userAccounts = await accountRepository.getByUserId(userId);
-      setAccounts(userAccounts);
-    } catch (error) {
-      console.error('Failed to load accounts:', error);
-    }
-  };
-
   const loadUserSettings = async (userId: string) => {
     try {
       const settings = await userSettingsRepository.getOrCreate(userId);
       setUserSettings(settings);
     } catch (error) {
       console.error('Failed to load user settings:', error);
-    }
-  };
-
-  const handleAddAccount = async (data: CreateAccountInput) => {
-    if (!user) return;
-
-    try {
-      await accountRepository.create(user.uid, data);
-      await loadAccounts(user.uid);
-      setShowAddAccount(false);
-    } catch (error) {
-      console.error('Failed to add account:', error);
-      throw error;
-    }
-  };
-
-  const handleDeleteAccount = async (accountId: string) => {
-    if (!user) return;
-    if (!confirm('Are you sure you want to delete this account?')) return;
-
-    try {
-      await accountRepository.delete(accountId);
-      await loadAccounts(user.uid);
-    } catch (error) {
-      console.error('Failed to delete account:', error);
-    }
-  };
-
-  const handleSetDefault = async (accountId: string) => {
-    if (!user) return;
-
-    try {
-      await accountRepository.setDefault(user.uid, accountId);
-      await loadAccounts(user.uid);
-    } catch (error) {
-      console.error('Failed to set default account:', error);
     }
   };
 
@@ -142,20 +101,29 @@ export default function SettingsPage() {
   const handleInstallApp = async () => {
     if (!installPrompt) return;
 
-    // Show the install prompt
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const promptEvent = installPrompt as any;
     promptEvent.prompt();
 
-    // Wait for the user to respond
     const { outcome } = await promptEvent.userChoice;
 
     if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
       setIsInstalled(true);
     }
 
     setInstallPrompt(null);
+  };
+
+  const handleSignOut = async () => {
+    if (!confirm('Are you sure you want to sign out?')) return;
+
+    try {
+      await signOut(auth);
+      router.push('/auth');
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+      alert('Failed to sign out. Please try again.');
+    }
   };
 
   const handleDeleteTransactions = async () => {
@@ -163,36 +131,28 @@ export default function SettingsPage() {
 
     const confirmText = 'DELETE TRANSACTIONS';
     const userInput = prompt(
-      `⚠️ WARNING: This will permanently delete ALL transactions:\n\n` +
-      `• All transactions\n` +
-      `• All import records\n\n` +
-      `Categories, tags, and accounts will NOT be deleted.\n\n` +
-      `This action CANNOT be undone!\n\n` +
+      `⚠️ WARNING: This will permanently delete ALL transactions.\n\n` +
       `Type "${confirmText}" to confirm:`
     );
 
     if (userInput !== confirmText) {
       if (userInput !== null) {
-        alert('Deletion cancelled. Text did not match.');
+        alert('Deletion cancelled.');
       }
       return;
     }
 
     setClearing(true);
     try {
-      // Delete transactions and import records
       await Promise.all([
         transactionRepository.deleteAllForUser(user.uid),
         importedTransactionRepository.deleteAllForUser(user.uid),
       ]);
 
-      alert('All transactions have been successfully deleted.');
-
-      // Reload accounts to show updated balances
-      await loadAccounts(user.uid);
+      alert('All transactions deleted successfully.');
     } catch (error) {
       console.error('Failed to delete transactions:', error);
-      alert('Failed to delete transactions. Please try again or contact support.');
+      alert('Failed to delete transactions. Please try again.');
     } finally {
       setClearing(false);
     }
@@ -203,26 +163,19 @@ export default function SettingsPage() {
 
     const confirmText = 'DELETE ALL DATA';
     const userInput = prompt(
-      `⚠️ WARNING: This will permanently delete ALL your data including:\n\n` +
-      `• All transactions\n` +
-      `• All accounts\n` +
-      `• All categories\n` +
-      `• All tags\n` +
-      `• All import records\n\n` +
-      `This action CANNOT be undone!\n\n` +
+      `⚠️ WARNING: This will permanently delete ALL your data!\n\n` +
       `Type "${confirmText}" to confirm:`
     );
 
     if (userInput !== confirmText) {
       if (userInput !== null) {
-        alert('Deletion cancelled. Text did not match.');
+        alert('Deletion cancelled.');
       }
       return;
     }
 
     setClearing(true);
     try {
-      // Delete all data in parallel for efficiency
       await Promise.all([
         transactionRepository.deleteAllForUser(user.uid),
         accountRepository.deleteAllForUser(user.uid),
@@ -231,13 +184,11 @@ export default function SettingsPage() {
         importedTransactionRepository.deleteAllForUser(user.uid),
       ]);
 
-      alert('All data has been successfully deleted.');
-
-      // Reload the page to refresh state
-      await loadAccounts(user.uid);
+      alert('All data deleted successfully.');
+      window.location.reload();
     } catch (error) {
       console.error('Failed to clear all data:', error);
-      alert('Failed to delete all data. Please try again or contact support.');
+      alert('Failed to delete all data. Please try again.');
     } finally {
       setClearing(false);
     }
@@ -256,293 +207,173 @@ export default function SettingsPage() {
 
   if (!user) return null;
 
-  const getCurrencySymbol = (currency: string) => {
-    return CURRENCIES.find((c) => c.value === currency)?.symbol || currency;
-  };
-
   return (
     <div className="min-h-screen bg-background pb-20">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="px-4 py-3">
-          <h1 className="text-xl font-bold">Settings</h1>
+          <h1 className="text-xl font-bold">Profile</h1>
+          <p className="text-xs text-muted-foreground">Account settings and preferences</p>
         </div>
       </header>
 
       <main className="px-4 py-4 space-y-4">
-        {/* Accounts Section */}
+        {/* User Info */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <User className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user.email || 'User'}</p>
+                <p className="text-xs text-muted-foreground">TineX Account</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Settings */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Accounts</CardTitle>
-                <CardDescription>Manage your accounts and balances</CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAddAccount(true)}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
-            </div>
+            <CardTitle className="text-base">Settings</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {accounts.length === 0 && (
-              <div className="text-center py-8">
-                <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">No accounts yet</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => setShowAddAccount(true)}
+          <CardContent className="p-0">
+            <div className="divide-y divide-border">
+              {/* Base Currency */}
+              <div className="p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Display Currency</span>
+                </div>
+                <select
+                  value={userSettings?.baseCurrency || 'USD'}
+                  onChange={(e) => handleBaseCurrencyChange(e.target.value as Currency)}
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md"
                 >
-                  Create Your First Account
-                </Button>
+                  {CURRENCIES.map((currency) => (
+                    <option key={currency.value} value={currency.value}>
+                      {currency.symbol} {currency.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
 
-            {accounts.map((account) => (
-              <div
-                key={account.id}
-                className="flex items-center justify-between p-3 rounded-md border border-border bg-card"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Wallet className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">
-                        {account.name}
-                        {account.isDefault && (
-                          <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                            Default
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {account.type.replace('_', ' ')}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-sm font-semibold mt-1 ml-6">
-                    {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
+              {/* PWA Install */}
+              <div className="p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Smartphone className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">App Installation</span>
+                </div>
+                {isInstalled ? (
+                  <p className="text-xs text-success flex items-center gap-1">
+                    <Download className="h-3 w-3" />
+                    App installed
                   </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {!account.isDefault && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={() => handleSetDefault(account.id)}
-                    >
-                      Set Default
-                    </Button>
-                  )}
+                ) : installPrompt ? (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                    onClick={() => handleDeleteAccount(account.id)}
+                    className="w-full"
+                    onClick={handleInstallApp}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Download className="h-4 w-4 mr-2" />
+                    Install App
                   </Button>
-                </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Use browser menu to install
+                  </p>
+                )}
               </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Base Currency */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Display Currency</CardTitle>
-            <CardDescription>
-              Choose your preferred currency for displaying totals and analytics
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Globe className="h-4 w-4" />
-                <span>All balances and analytics will be converted to this currency</span>
-              </div>
-              <select
-                value={userSettings?.baseCurrency || 'USD'}
-                onChange={(e) => handleBaseCurrencyChange(e.target.value as Currency)}
-                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                {CURRENCIES.map((currency) => (
-                  <option key={currency.value} value={currency.value}>
-                    {currency.symbol} {currency.label} ({currency.value})
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                Individual transaction amounts will still show in their original currency
-              </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* App Installation */}
+        {/* Quick Actions */}
         <Card>
           <CardHeader>
-            <CardTitle>App Installation</CardTitle>
-            <CardDescription>Install TineX as a standalone app on your device</CardDescription>
+            <CardTitle className="text-base">Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {isInstalled ? (
-              <div className="flex items-center gap-2 text-green-500">
-                <Smartphone className="h-5 w-5" />
-                <span className="text-sm font-medium">App is installed</span>
-              </div>
-            ) : installPrompt ? (
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={handleInstallApp}
+          <CardContent className="p-0">
+            <div className="divide-y divide-border">
+              <Link
+                href="/categories"
+                className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
               >
-                <Download className="h-4 w-4 mr-2" />
-                <div className="text-left">
-                  <p className="text-sm font-medium">Install TineX App</p>
-                  <p className="text-xs text-muted-foreground">Add to home screen for quick access</p>
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Manage Categories</span>
                 </div>
-              </Button>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Smartphone className="h-5 w-5" />
-                  <span className="text-sm">Install option not available</span>
+              </Link>
+
+              <Link
+                href="/tags"
+                className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Manage Tags</span>
                 </div>
-                <div className="text-xs text-muted-foreground space-y-2">
-                  <p className="font-medium">To install manually:</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2">
-                    <li><strong>Chrome:</strong> Menu (⋮) → &quot;Install app&quot; or &quot;Add to Home screen&quot;</li>
-                    <li><strong>Safari:</strong> Share button → &quot;Add to Home Screen&quot;</li>
-                    <li><strong>Edge:</strong> Menu (…) → &quot;Apps&quot; → &quot;Install this site as an app&quot;</li>
-                  </ul>
+              </Link>
+
+              <Link
+                href="/import"
+                className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Import Transactions</span>
                 </div>
-              </div>
-            )}
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Data Management */}
+        {/* Account Actions */}
         <Card>
-          <CardHeader>
-            <CardTitle>Data Management</CardTitle>
-            <CardDescription>Manage categories and tags for your transactions</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => router.push('/categories')}
-            >
-              <div className="flex items-center gap-2">
-                <FolderOpen className="h-4 w-4" />
-                <div className="text-left">
-                  <p className="text-sm font-medium">Categories</p>
-                  <p className="text-xs text-muted-foreground">Organize transactions by category</p>
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => router.push('/tags')}
-            >
-              <div className="flex items-center gap-2">
-                <Tag className="h-4 w-4" />
-                <div className="text-left">
-                  <p className="text-sm font-medium">Tags</p>
-                  <p className="text-xs text-muted-foreground">Label transactions with custom tags</p>
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => router.push('/import')}
-            >
-              <div className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                <div className="text-left">
-                  <p className="text-sm font-medium">Import Transactions</p>
-                  <p className="text-xs text-muted-foreground">Import from bank statements (PDF)</p>
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border">
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2 p-3 text-sm hover:bg-muted/30 transition-colors"
+              >
+                <LogOut className="h-4 w-4 text-muted-foreground" />
+                Sign Out
+              </button>
+            </div>
           </CardContent>
         </Card>
 
         {/* Danger Zone */}
         <Card className="border-destructive/50">
           <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            <CardDescription>Irreversible actions - proceed with caution</CardDescription>
+            <CardTitle className="text-sm text-destructive">Danger Zone</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Button
-                variant="destructive"
-                className="w-full"
-                onClick={handleDeleteTransactions}
-                disabled={clearing}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {clearing ? 'Deleting...' : 'Delete All Transactions'}
-              </Button>
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                Deletes all transactions and import records. Categories, tags, and accounts remain.
-              </p>
-            </div>
+          <CardContent className="space-y-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-destructive hover:text-destructive border-destructive/50"
+              onClick={handleDeleteTransactions}
+              disabled={clearing}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete All Transactions
+            </Button>
 
-            <div>
-              <Button
-                variant="destructive"
-                className="w-full"
-                onClick={handleClearAllData}
-                disabled={clearing}
-              >
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                {clearing ? 'Deleting All Data...' : 'Clear All Data'}
-              </Button>
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                Permanently deletes ALL data including transactions, accounts, categories, tags, and import records
-              </p>
-            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full"
+              onClick={handleClearAllData}
+              disabled={clearing}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Clear All Data
+            </Button>
           </CardContent>
         </Card>
       </main>
-
-      {/* Floating Action Button */}
-      <FAB
-        className="bottom-24 right-4"
-        onClick={() => setShowAddAccount(true)}
-      >
-        <Plus className="h-6 w-6" />
-      </FAB>
-
-      {/* Add Account Modal */}
-      <Modal
-        isOpen={showAddAccount}
-        onClose={() => setShowAddAccount(false)}
-        title="Add Account"
-      >
-        <AddAccountForm
-          onSubmit={handleAddAccount}
-          onCancel={() => setShowAddAccount(false)}
-        />
-      </Modal>
 
       <BottomNav />
     </div>

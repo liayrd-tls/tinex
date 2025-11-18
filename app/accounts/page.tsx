@@ -6,32 +6,73 @@ import Link from 'next/link';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import BottomNav from '@/shared/components/layout/BottomNav';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui';
 import Modal from '@/shared/components/ui/Modal';
 import FAB from '@/shared/components/ui/FAB';
 import AddAccountForm from '@/modules/accounts/AddAccountForm';
-import { Plus, Wallet, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  Wallet,
+  ArrowRight,
+  DollarSign,
+  Briefcase,
+  TrendingUp,
+  Utensils,
+  ShoppingBag,
+  Car,
+  FileText,
+  Film,
+  Heart,
+  BookOpen,
+  MoreHorizontal,
+  Home,
+  Smartphone,
+  Coffee,
+  Gift,
+  Tag as TagIcon,
+} from 'lucide-react';
 import { accountRepository } from '@/core/repositories/AccountRepository';
-import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
-import { Account, CreateAccountInput, CURRENCIES, UserSettings } from '@/core/models';
-import { convertMultipleCurrencies, formatCurrency } from '@/shared/services/currencyService';
+import { transactionRepository } from '@/core/repositories/TransactionRepository';
+import { categoryRepository } from '@/core/repositories/CategoryRepository';
+import { Account, CreateAccountInput, CURRENCIES, Transaction, Category } from '@/core/models';
+import { formatCurrency } from '@/shared/services/currencyService';
 import { cn } from '@/shared/utils/cn';
+
+// Icon mapping for categories
+const ICONS = {
+  DollarSign,
+  Briefcase,
+  TrendingUp,
+  Plus,
+  Utensils,
+  ShoppingBag,
+  Car,
+  FileText,
+  Film,
+  Heart,
+  BookOpen,
+  MoreHorizontal,
+  Home,
+  Smartphone,
+  Coffee,
+  Gift,
+};
 
 export default function AccountsPage() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [totalBalance, setTotalBalance] = useState<number>(0);
   const router = useRouter();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser({ uid: currentUser.uid });
-        await loadAccounts(currentUser.uid);
+        await loadData(currentUser.uid);
       } else {
         router.push('/auth');
       }
@@ -41,28 +82,19 @@ export default function AccountsPage() {
     return () => unsubscribe();
   }, [router]);
 
-  const loadAccounts = async (userId: string) => {
+  const loadData = async (userId: string) => {
     try {
-      const [userAccounts, settings] = await Promise.all([
+      const [userAccounts, userTransactions, userCategories] = await Promise.all([
         accountRepository.getByUserId(userId),
-        userSettingsRepository.getOrCreate(userId),
+        transactionRepository.getByUserId(userId),
+        categoryRepository.getByUserId(userId),
       ]);
 
       setAccounts(userAccounts);
-      setUserSettings(settings);
-
-      // Calculate total balance in base currency
-      if (userAccounts.length > 0) {
-        const balancesConverted = await convertMultipleCurrencies(
-          userAccounts.map((acc) => ({ amount: acc.balance, currency: acc.currency })),
-          settings.baseCurrency
-        );
-        setTotalBalance(balancesConverted);
-      } else {
-        setTotalBalance(0);
-      }
+      setTransactions(userTransactions);
+      setCategories(userCategories);
     } catch (error) {
-      console.error('Failed to load accounts:', error);
+      console.error('Failed to load data:', error);
     }
   };
 
@@ -71,34 +103,11 @@ export default function AccountsPage() {
 
     try {
       await accountRepository.create(user.uid, data);
-      await loadAccounts(user.uid);
+      await loadData(user.uid);
       setShowAddAccount(false);
     } catch (error) {
       console.error('Failed to add account:', error);
       throw error;
-    }
-  };
-
-  const handleDeleteAccount = async (accountId: string) => {
-    if (!user) return;
-    if (!confirm('Are you sure you want to delete this account?')) return;
-
-    try {
-      await accountRepository.delete(accountId);
-      await loadAccounts(user.uid);
-    } catch (error) {
-      console.error('Failed to delete account:', error);
-    }
-  };
-
-  const handleSetDefault = async (accountId: string) => {
-    if (!user) return;
-
-    try {
-      await accountRepository.setDefault(user.uid, accountId);
-      await loadAccounts(user.uid);
-    } catch (error) {
-      console.error('Failed to set default account:', error);
     }
   };
 
@@ -119,6 +128,17 @@ export default function AccountsPage() {
     return CURRENCIES.find((c) => c.value === currency)?.symbol || currency;
   };
 
+  const getCategoryById = (categoryId: string) => {
+    return categories.find((c) => c.id === categoryId);
+  };
+
+  // Sort transactions by date (newest first)
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+    const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+    return dateB.getTime() - dateA.getTime();
+  });
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
@@ -129,66 +149,41 @@ export default function AccountsPage() {
       </header>
 
       <main className="px-4 py-4 space-y-4">
-        {/* Total Balance Summary */}
-        {accounts.length > 0 && (
-          <Card className={cn(
-            "bg-gradient-to-br",
-            totalBalance >= 0
-              ? "from-primary/20 to-primary/5"
-              : "from-destructive/20 to-destructive/5"
-          )}>
-            <CardHeader>
-              <CardDescription>Total Balance ({userSettings?.baseCurrency || 'USD'})</CardDescription>
-              <CardTitle className={cn(
-                "text-3xl",
-                totalBalance < 0 && "text-destructive"
-              )}>
-                {formatCurrency(totalBalance, userSettings?.baseCurrency || 'USD')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground">
-                Across {accounts.length} account{accounts.length !== 1 ? 's' : ''}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Empty State */}
-        {accounts.length === 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>No Accounts</CardTitle>
-              <CardDescription>Create your first account to start tracking finances</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center py-8">
-              <Wallet className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <Button
-                variant="default"
-                onClick={() => setShowAddAccount(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Account
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Accounts List */}
-        {accounts.length > 0 && (
-          <div className="space-y-3">
-            {accounts.map((account) => (
-              <Card key={account.id} className="overflow-hidden">
-                <Link href={`/accounts/${account.id}`}>
-                  <CardContent className="p-4 hover:bg-muted/30 transition-colors cursor-pointer">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                          <Wallet className="h-5 w-5 text-primary" />
+        {/* Accounts List - Compact */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Your Accounts</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {accounts.length === 0 ? (
+              <div className="text-center py-8 px-4">
+                <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground mb-3">No accounts yet</p>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setShowAddAccount(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Account
+                </Button>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {accounts.map((account) => (
+                  <Link
+                    key={account.id}
+                    href={`/accounts/${account.id}`}
+                    className="block p-3 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <Wallet className="h-4 w-4 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold truncate">{account.name}</h3>
+                            <h3 className="text-sm font-medium truncate">{account.name}</h3>
                             {account.isDefault && (
                               <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary flex-shrink-0">
                                 Default
@@ -198,50 +193,138 @@ export default function AccountsPage() {
                           <p className="text-xs text-muted-foreground capitalize">
                             {account.type.replace('_', ' ')}
                           </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="text-right">
                           <p className={cn(
-                            "text-lg font-bold mt-2",
+                            "text-sm font-bold",
                             account.balance < 0 && "text-destructive"
                           )}>
                             {getCurrencySymbol(account.currency)} {account.balance.toFixed(2)}
                           </p>
-                          {account.notes && (
-                            <p className="text-xs text-muted-foreground mt-1">{account.notes}</p>
-                          )}
                         </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
-                  </CardContent>
-                </Link>
-                <div className="flex gap-1 px-4 pb-3 border-t border-border/50 pt-2">
-                  {!account.isDefault && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs flex-1"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleSetDefault(account.id);
-                      }}
-                    >
-                      Set Default
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-destructive hover:text-destructive flex-1"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleDeleteAccount(account.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
+                  </Link>
+                ))}
+                {/* Add Account Button inside card */}
+                <button
+                  onClick={() => setShowAddAccount(true)}
+                  className="w-full p-3 flex items-center justify-center gap-2 text-sm text-primary hover:bg-muted/30 transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Account
+                </button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Categories Button */}
+        <div className="mt-6">
+          <Link href="/categories">
+            <Button variant="outline" className="w-full">
+              <TagIcon className="h-4 w-4 mr-2" />
+              Manage Categories
+            </Button>
+          </Link>
+        </div>
+
+        {/* All Transactions */}
+        {transactions.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">All Transactions</CardTitle>
+                <Link href="/transactions">
+                  <Button variant="ghost" size="sm" className="h-8 text-xs">
+                    View All
                   </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
+                {sortedTransactions.slice(0, 10).map((transaction) => {
+                  const category = getCategoryById(transaction.categoryId);
+                  const account = accounts.find((a) => a.id === transaction.accountId);
+                  const txnDate = transaction.date instanceof Date ? transaction.date : new Date(transaction.date);
+
+                  return (
+                    <Link
+                      key={transaction.id}
+                      href={`/transactions/${transaction.id}`}
+                      className="block p-3 hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          {category && (() => {
+                            const IconComponent = ICONS[category.icon as keyof typeof ICONS] || MoreHorizontal;
+                            return (
+                              <div
+                                className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0"
+                                style={{ backgroundColor: `${category.color}20` }}
+                              >
+                                <IconComponent className="h-4 w-4" style={{ color: category.color }} />
+                              </div>
+                            );
+                          })()}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{transaction.description}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {category && (
+                                <span className="text-xs text-muted-foreground">{category.name}</span>
+                              )}
+                              {account && (
+                                <>
+                                  <span className="text-xs text-muted-foreground">•</span>
+                                  <span className="text-xs text-muted-foreground">{account.name}</span>
+                                </>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {txnDate.toLocaleDateString('uk-UA', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className={cn(
+                            "text-sm font-semibold",
+                            transaction.type === 'income' ? "text-success" : "text-destructive"
+                          )}>
+                            {transaction.type === 'income' ? '+' : '-'}
+                            {formatCurrency(transaction.amount, transaction.currency)}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Empty State for Transactions */}
+        {transactions.length === 0 && accounts.length > 0 && (
+          <Card>
+            <CardContent className="text-center py-8">
+              <p className="text-sm text-muted-foreground">No transactions yet</p>
+              <Link href="/transactions">
+                <Button variant="default" size="sm" className="mt-3">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Transaction
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         )}
       </main>
 
