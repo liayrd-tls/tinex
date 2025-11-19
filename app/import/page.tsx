@@ -52,40 +52,30 @@ export default function ImportPage({
   // Handle shared file
   useEffect(() => {
     const sharedFileUrl = searchParams.shared_file; // Access directly from prop
-    console.log('[DEBUG] Import page loaded. Checking for shared file...');
-    console.log('[DEBUG] shared_file URL parameter:', sharedFileUrl);
 
     const getFileFromCache = async (fileUrl: string) => {
-      console.log('[DEBUG] getFileFromCache called with URL:', fileUrl);
       try {
         const cache = await caches.open('shared-files-cache');
         const response = await cache.match(fileUrl);
-        console.log('[DEBUG] Response from cache:', response);
         if (response) {
           const blob = await response.blob();
           const fileName = decodeURIComponent(fileUrl.split('/').pop()?.split('_').slice(1).join('_') || 'shared-file');
           const receivedFile = new File([blob], fileName, { type: blob.type });
 
-          console.log('[DEBUG] File successfully retrieved from cache:', receivedFile);
           setFile(receivedFile);
           
           // Auto-detect bank type from file extension
           if (receivedFile.name.toLowerCase().endsWith('.csv')) {
-            console.log('[DEBUG] Detected bank type: monobank');
             setBankType('monobank');
           } else if (receivedFile.name.toLowerCase().endsWith('.pdf')) {
-            console.log('[DEBUG] Detected bank type: trustee');
             setBankType('trustee');
           }
 
           // Clean up the cache
           await cache.delete(fileUrl);
-          console.log('[DEBUG] Cleaned up file from cache.');
-        } else {
-          console.log('[DEBUG] File not found in cache.');
         }
       } catch (err) {
-        console.error('[DEBUG] Error retrieving shared file:', err);
+        console.error('Error retrieving shared file:', err);
         setError('Could not load shared file.');
       }
     };
@@ -95,7 +85,6 @@ export default function ImportPage({
     }
     
     const handleMessage = (event: MessageEvent) => {
-      console.log('[DEBUG] Received message from service worker:', event.data);
       if (event.data?.type === 'FILE_SHARED' && event.data.fileUrl) {
         getFileFromCache(event.data.fileUrl);
       }
@@ -110,7 +99,6 @@ export default function ImportPage({
 
   // Update account selection when bank type changes
   useEffect(() => {
-    console.log('[DEBUG] Account selection useEffect triggered. User:', user, 'Bank Type:', bankType);
     if (user) {
       loadAccounts(user.uid);
     }
@@ -118,10 +106,8 @@ export default function ImportPage({
   }, [bankType, user]);
   
   const loadAccounts = async (userId: string) => {
-    console.log('[DEBUG] loadAccounts called for user:', userId);
     try {
       const userAccounts = await accountRepository.getByUserId(userId);
-      console.log('[DEBUG] Found accounts:', userAccounts);
       setAccounts(userAccounts);
 
       let preSelectedAccountId: string | undefined = undefined;
@@ -144,10 +130,7 @@ export default function ImportPage({
       }
 
       if (preSelectedAccountId) {
-        console.log('[DEBUG] Pre-selecting account ID:', preSelectedAccountId);
         setSelectedAccount(preSelectedAccountId);
-      } else {
-        console.log('[DEBUG] No account could be pre-selected.');
       }
     } catch (error) {
       console.error('Failed to load accounts:', error);
@@ -174,9 +157,7 @@ export default function ImportPage({
 
   // Wrap in useCallback to stabilize for useEffect dependency
   const handleParseFile = useCallback(async () => {
-    console.log('[DEBUG] handleParseFile called.');
     if (!file || !user) {
-      console.log('[DEBUG] handleParseFile aborted. Missing file or user.', 'File:', !!file, 'User:', !!user);
       return;
     }
 
@@ -184,7 +165,6 @@ export default function ImportPage({
     setError('');
 
     try {
-      console.log('[DEBUG] Starting parsing for bank type:', bankType);
       let transactions: ParsedTransaction[];
 
       if (bankType === 'monobank') {
@@ -216,7 +196,6 @@ export default function ImportPage({
         }));
       }
 
-      console.log(`[DEBUG] Successfully parsed ${transactions.length} transactions.`);
       setParsedTransactions(transactions);
 
       // Store in sessionStorage for preview page
@@ -229,10 +208,10 @@ export default function ImportPage({
         timestamp: Date.now(),
       }));
 
-      setImporting(false);
     } catch (err) {
-      console.error('[DEBUG] Error parsing file:', err);
+      console.error('Error parsing file:', err);
       setError(err instanceof Error ? err.message : 'Failed to parse file');
+    } finally {
       setImporting(false);
     }
   }, [file, user, bankType, selectedAccount]);
@@ -240,18 +219,11 @@ export default function ImportPage({
   // Automatically parse file when it's received from share target
   useEffect(() => {
     const isSharedFile = searchParams.shared_file;
-    console.log('[DEBUG] Auto-parse check. Conditions:', {
-      isSharedFile: !!isSharedFile,
-      file: !!file,
-      selectedAccount: !!selectedAccount,
-      importing: importing
-    });
-    if (isSharedFile && file && selectedAccount && !importing) {
-      console.log('[DEBUG] All conditions met. Calling handleParseFile.');
+    if (isSharedFile && file && selectedAccount && !importing && parsedTransactions.length === 0) {
       handleParseFile();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file, selectedAccount, searchParams.shared_file, handleParseFile, importing]); // Added 'importing' to dependencies
+  }, [file, selectedAccount, searchParams.shared_file, handleParseFile, importing, parsedTransactions]);
 
   if (loading) {
     return (
