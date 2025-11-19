@@ -104,6 +104,74 @@ export default function ImportPage({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankType, user]);
+
+  // Wrap in useCallback to stabilize for useEffect dependency
+  const handleParseFile = useCallback(async () => {
+    if (!file || !user) return;
+
+    setImporting(true);
+    setError('');
+
+    try {
+      let transactions: ParsedTransaction[];
+
+      if (bankType === 'monobank') {
+        // Parse CSV client-side
+        const statementData = await parseMonobankCSV(file);
+        transactions = statementData.transactions;
+      } else {
+        // Parse PDF server-side (Trustee)
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/parse-pdf', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to parse PDF');
+        }
+
+        const statementData: TrusteeStatementData = result.data;
+
+        // Convert date strings back to Date objects
+        transactions = statementData.transactions.map(txn => ({
+          ...txn,
+          date: new Date(txn.date),
+        }));
+      }
+
+      setParsedTransactions(transactions);
+
+      // Store in sessionStorage for preview page
+      sessionStorage.setItem('parsedTransactions', JSON.stringify({
+        transactions: transactions.map(t => ({
+          ...t,
+          date: t.date.toISOString(),
+        })),
+        accountId: selectedAccount,
+        timestamp: Date.now(),
+      }));
+
+      setImporting(false);
+    } catch (err) {
+      console.error('Error parsing file:', err);
+      setError(err instanceof Error ? err.message : 'Failed to parse file');
+      setImporting(false);
+    }
+  }, [file, user, bankType, selectedAccount]);
+
+  // Automatically parse file when it's received from share target
+  useEffect(() => {
+    const isSharedFile = searchParams.shared_file;
+    if (isSharedFile && file && selectedAccount && !importing) {
+      handleParseFile();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, selectedAccount, searchParams.shared_file, handleParseFile]);
   
   const loadAccounts = async (userId: string) => {
     try {
