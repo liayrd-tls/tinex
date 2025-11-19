@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import BottomNav from '@/shared/components/layout/BottomNav';
@@ -29,6 +29,7 @@ export default function ImportPage() {
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
   const [error, setError] = useState<string>('');
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -45,14 +46,62 @@ export default function ImportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  // Handle shared file
+  useEffect(() => {
+    const sharedFileUrl = searchParams.get('shared_file');
+
+    const getFileFromCache = async (fileUrl: string) => {
+      try {
+        const cache = await caches.open('shared-files-cache');
+        const response = await cache.match(fileUrl);
+        if (response) {
+          const blob = await response.blob();
+          const fileName = decodeURIComponent(fileUrl.split('/').pop()?.split('_').slice(1).join('_') || 'shared-file');
+          const receivedFile = new File([blob], fileName, { type: blob.type });
+
+          setFile(receivedFile);
+          
+          // Auto-detect bank type from file extension
+          if (receivedFile.name.toLowerCase().endsWith('.csv')) {
+            setBankType('monobank');
+          } else if (receivedFile.name.toLowerCase().endsWith('.pdf')) {
+            setBankType('trustee');
+          }
+
+          // Clean up the cache
+          await cache.delete(fileUrl);
+        }
+      } catch (err) {
+        console.error('Error retrieving shared file:', err);
+        setError('Could not load shared file.');
+      }
+    };
+    
+    if (sharedFileUrl) {
+      getFileFromCache(sharedFileUrl);
+    }
+    
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'FILE_SHARED' && event.data.fileUrl) {
+        getFileFromCache(event.data.fileUrl);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleMessage);
+    };
+  }, [searchParams]);
+
   // Update account selection when bank type changes
   useEffect(() => {
     if (user) {
       loadAccounts(user.uid);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankType]);
-
+  }, [bankType, user]);
+  
   const loadAccounts = async (userId: string) => {
     try {
       const userAccounts = await accountRepository.getByUserId(userId);
