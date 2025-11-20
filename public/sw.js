@@ -41,13 +41,16 @@ self.addEventListener('fetch', (event) => {
 
   // Intercept Share Target POST requests
   if (event.request.method === 'POST' && url.pathname === '/import/share-target/') {
+    console.log('[SW] Share target intercepted:', url.pathname);
     event.respondWith(
       (async () => {
         try {
           const formData = await event.request.formData();
           const file = formData.get('statement'); // 'statement' is the name from manifest.json
+          console.log('[SW] File received:', file?.name);
 
           if (!file) {
+            console.log('[SW] No file in formData');
             return Response.redirect('/import/?error=true', 303);
           }
 
@@ -56,18 +59,21 @@ self.addEventListener('fetch', (event) => {
           // Use a unique name for the cache entry, e.g., based on timestamp
           const fileUrl = `/shared/${Date.now()}_${file.name}`;
           await cache.put(fileUrl, new Response(file));
-          
+          console.log('[SW] File cached at:', fileUrl);
+
           const redirectUrl = self.registration.scope + `import?shared_file=${encodeURIComponent(fileUrl)}`;
+          console.log('[SW] Redirecting to:', redirectUrl);
 
           // Notify any open clients
           const clients = await self.clients.matchAll({ type: 'window' });
+          console.log('[SW] Notifying', clients.length, 'clients');
           for (const client of clients) {
             client.postMessage({
               type: 'FILE_SHARED',
               fileUrl: fileUrl,
             });
           }
-          
+
           // Redirect the browser to the import page with the file param.
           // This is more robust than trying to manage windows/focus.
           return Response.redirect(redirectUrl, 303);
