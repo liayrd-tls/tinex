@@ -61,7 +61,15 @@
       "files": [
         {
           "name": "statement",
-          "accept": ["application/pdf", "text/csv", ".pdf", ".csv"]
+          "accept": [
+            "application/pdf",
+            ".pdf",
+            "text/csv",
+            "application/csv",
+            "text/comma-separated-values",
+            "application/vnd.ms-excel",
+            ".csv"
+          ]
         }
       ]
     }

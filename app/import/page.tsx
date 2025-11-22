@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation'; // Removed useSearchParams import
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import BottomNav from '@/shared/components/layout/BottomNav';
@@ -18,11 +18,7 @@ import { cn } from '@/shared/utils/cn';
 type ParsedTransaction = TrusteeParsedTransaction | MonobankParsedTransaction;
 type BankType = 'trustee' | 'monobank';
 
-export default function ImportPage({
-  searchParams,
-}: {
-  searchParams: { [key: string]: string | string[] | undefined };
-}) {
+function ImportPageContent() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -33,6 +29,7 @@ export default function ImportPage({
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
   const [error, setError] = useState<string>('');
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -51,9 +48,12 @@ export default function ImportPage({
 
   // Handle shared file
   useEffect(() => {
-    const sharedFileUrl = searchParams.shared_file; // Access directly from prop
+    const sharedFileUrl = searchParams.get('shared_file');
+    console.log('[Import] Shared file URL from params:', sharedFileUrl);
+    console.log('[Import] All searchParams:', Array.from(searchParams.entries()));
 
     const getFileFromCache = async (fileUrl: string) => {
+      console.log('[Import] Attempting to get file from cache:', fileUrl);
       try {
         const cache = await caches.open('shared-files-cache');
         const response = await cache.match(fileUrl);
@@ -95,7 +95,7 @@ export default function ImportPage({
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleMessage);
     };
-  }, [searchParams.shared_file]); // Changed dependency
+  }, [searchParams]); // Changed dependency
 
   // Update account selection when bank type changes
   useEffect(() => {
@@ -218,12 +218,12 @@ export default function ImportPage({
 
   // Automatically parse file when it's received from share target
   useEffect(() => {
-    const isSharedFile = searchParams.shared_file;
+    const isSharedFile = searchParams.get('shared_file');
     if (isSharedFile && file && selectedAccount && !importing && parsedTransactions.length === 0) {
       handleParseFile();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file, selectedAccount, searchParams.shared_file, handleParseFile, importing, parsedTransactions]);
+  }, [file, selectedAccount, searchParams, handleParseFile, importing, parsedTransactions]);
 
   if (loading) {
     return (
@@ -454,5 +454,20 @@ export default function ImportPage({
 
       <BottomNav />
     </div>
+  );
+}
+
+export default function ImportPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background">
+        <div className="container max-w-2xl mx-auto p-4 pb-20">
+          <p className="text-center text-muted-foreground">Loading...</p>
+        </div>
+        <BottomNav />
+      </div>
+    }>
+      <ImportPageContent />
+    </Suspense>
   );
 }
