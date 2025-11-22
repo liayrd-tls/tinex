@@ -98,6 +98,11 @@ function parseTransactions(text: string): ParsedTransaction[] {
         /^(\d{4}\.\d{2}\.\d{2}),\s*(\d{2}:\d{2})(.+?)([-+]?\d+\.?\d*)\s+([A-Z]{3})$/
       );
 
+      // Log lines that don't match to debug
+      if (!transactionMatch && !line.match(/^(\d{4}\.\d{2}\.\d{2}),\s*(\d{2}:\d{2})(.+)$/)) {
+        console.log('[Parser] Unmatched line:', line);
+      }
+
       if (transactionMatch) {
         const [, dateStr, timeStr, description, amountStr, currency] = transactionMatch;
 

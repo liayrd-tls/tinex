@@ -131,6 +131,25 @@ class ImportedTransactionRepository {
   }
 
   /**
+   * Delete imported transaction record by transaction ID
+   */
+  async deleteByTransactionId(transactionId: string): Promise<void> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where('transactionId', '==', transactionId)
+      );
+      const snapshot = await getDocs(q);
+
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+    } catch (error) {
+      console.error('Error deleting imported transaction by transactionId:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Delete all imported transactions for a user
    */
   async deleteAllForUser(userId: string): Promise<void> {

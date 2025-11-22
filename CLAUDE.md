@@ -141,6 +141,7 @@ export const metadata: Metadata = { ... };
 - `ImportedTransactionRepository.getImportedHashes()` returns Set of hashes
 - Check `existingHashes.has(parsed.hash)` before importing
 - Store hash after successful import
+- **IMPORTANT**: When deleting a transaction, the associated `importedTransactions` record is automatically deleted via `TransactionRepository.delete()` to prevent false duplicate detection
 
 **CSV Parsing** (easiest to implement):
 - Use PapaParse library (already installed)

@@ -205,6 +205,7 @@ function ImportPageContent() {
           date: t.date.toISOString(),
         })),
         accountId: selectedAccount,
+        source: bankType, // Store the source (trustee or monobank)
         timestamp: Date.now(),
       }));
 

@@ -74,6 +74,7 @@ export default function ImportPreviewPage() {
   const [transactions, setTransactions] = useState<EditableTransaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accountId, setAccountId] = useState('');
+  const [source, setSource] = useState<'trustee' | 'monobank'>('trustee');
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showCategoryPanel, setShowCategoryPanel] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<EditableTransaction | null>(null);
@@ -130,6 +131,7 @@ export default function ImportPreviewPage() {
 
       setTransactions(txns);
       setAccountId(data.accountId);
+      setSource(data.source || 'trustee'); // Load source from sessionStorage
 
       // Select all by default
       setSelectedIndices(new Set(txns.map((_, idx) => idx)));
@@ -198,21 +200,33 @@ export default function ImportPreviewPage() {
     setImporting(true);
 
     try {
-      // Get existing hashes
+      // Get existing hashes for the current source
       const existingHashes = await importedTransactionRepository.getImportedHashes(
         user.uid,
-        'trustee'
+        source
       );
 
       let imported = 0;
       let duplicates = 0;
       let failed = 0;
+      const duplicateDetails: Array<{
+        description: string;
+        amount: number;
+        date: string;
+        hash: string;
+      }> = [];
 
       for (const parsed of selectedTransactions) {
         try {
           // Check for duplicate
           if (existingHashes.has(parsed.hash)) {
             duplicates++;
+            duplicateDetails.push({
+              description: parsed.description,
+              amount: parsed.amount,
+              date: parsed.date.toLocaleDateString(),
+              hash: parsed.hash.substring(0, 8), // Show first 8 chars of hash
+            });
             continue;
           }
 
@@ -237,7 +251,7 @@ export default function ImportPreviewPage() {
             userId: user.uid,
             transactionId,
             hash: parsed.hash,
-            source: 'trustee',
+            source: source, // Use dynamic source
             importDate: new Date(),
           });
 
@@ -251,8 +265,17 @@ export default function ImportPreviewPage() {
       // Clear session storage
       sessionStorage.removeItem('parsedTransactions');
 
-      // Show results and redirect
-      alert(`Import complete!\n\nImported: ${imported}\nDuplicates: ${duplicates}\nFailed: ${failed}`);
+      // Show results with duplicate details
+      let message = `Import complete!\n\nImported: ${imported}\nDuplicates: ${duplicates}\nFailed: ${failed}`;
+
+      if (duplicates > 0) {
+        message += '\n\n--- Duplicate Transactions ---';
+        duplicateDetails.forEach((dup, idx) => {
+          message += `\n${idx + 1}. ${dup.description}\n   ${dup.amount} | ${dup.date}\n   Hash: ${dup.hash}...`;
+        });
+      }
+
+      alert(message);
       router.push('/transactions');
     } catch (error) {
       console.error('Error importing transactions:', error);

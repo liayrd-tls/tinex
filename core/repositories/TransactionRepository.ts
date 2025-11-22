@@ -11,12 +11,12 @@ import {
   limit,
   Timestamp,
   QueryConstraint,
-  getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Transaction, CreateTransactionInput, UpdateTransactionInput } from '@/core/models';
 import { FIREBASE_COLLECTIONS } from '@/shared/config/constants';
 import { accountRepository } from './AccountRepository';
+import { importedTransactionRepository } from './ImportedTransactionRepository';
 
 export class TransactionRepository {
   private collectionName = FIREBASE_COLLECTIONS.TRANSACTIONS;
@@ -77,7 +77,6 @@ export class TransactionRepository {
    * Get transaction by ID
    */
   async getById(id: string): Promise<Transaction | null> {
-    const docRef = doc(db, this.collectionName, id);
     const docSnap = await getDocs(query(collection(db, this.collectionName), where('__name__', '==', id)));
 
     if (docSnap.empty) return null;
@@ -263,8 +262,12 @@ export class TransactionRepository {
       );
     }
 
+    // Delete the transaction document
     const docRef = doc(db, this.collectionName, id);
     await deleteDoc(docRef);
+
+    // Delete associated imported transaction record (if exists)
+    await importedTransactionRepository.deleteByTransactionId(id);
   }
 
   /**
@@ -274,8 +277,12 @@ export class TransactionRepository {
     const q = query(collection(db, this.collectionName), where('userId', '==', userId));
     const snapshot = await getDocs(q);
 
+    // Delete all transaction documents
     const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
     await Promise.all(deletePromises);
+
+    // Delete all associated imported transaction records
+    await importedTransactionRepository.deleteAllForUser(userId);
   }
 
   /**
