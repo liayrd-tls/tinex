@@ -3,7 +3,7 @@
  * Analyzes spending patterns and provides insights
  */
 
-export type TrendDirection = 'increasing' | 'decreasing' | 'stable';
+export type TrendDirection = "increasing" | "decreasing" | "stable";
 
 export interface SpendingInsight {
   trend: TrendDirection;
@@ -24,13 +24,15 @@ interface WeekData {
  * @param chartData Array of weekly spending data
  * @returns Spending insights with trend and recommendations
  */
-export function analyzeSpendingTrend(chartData: WeekData[]): SpendingInsight | null {
+export function analyzeSpendingTrend(
+  chartData: WeekData[]
+): SpendingInsight | null {
   if (!chartData || chartData.length === 0) {
     return null;
   }
 
   // Filter out weeks with zero spending
-  const nonZeroWeeks = chartData.filter(week => week.amount > 0);
+  const nonZeroWeeks = chartData.filter((week) => week.amount > 0);
 
   // If no weeks with spending, return null
   if (nonZeroWeeks.length === 0) {
@@ -51,11 +53,14 @@ export function analyzeSpendingTrend(chartData: WeekData[]): SpendingInsight | n
     return null;
   }
 
-  const firstHalfAvg = firstHalf.reduce((sum, week) => sum + week.amount, 0) / firstHalf.length;
-  const secondHalfAvg = secondHalf.reduce((sum, week) => sum + week.amount, 0) / secondHalf.length;
+  const firstHalfAvg =
+    firstHalf.reduce((sum, week) => sum + week.amount, 0) / firstHalf.length;
+  const secondHalfAvg =
+    secondHalf.reduce((sum, week) => sum + week.amount, 0) / secondHalf.length;
 
   // Calculate percentage change
-  const percentageChange = ((secondHalfAvg - firstHalfAvg) / (firstHalfAvg || 1)) * 100;
+  const percentageChange =
+    ((secondHalfAvg - firstHalfAvg) / (firstHalfAvg || 1)) * 100;
 
   // Determine trend (threshold: 10% change to avoid noise)
   let trend: TrendDirection;
@@ -63,22 +68,24 @@ export function analyzeSpendingTrend(chartData: WeekData[]): SpendingInsight | n
   let message: string;
 
   if (percentageChange > 10) {
-    trend = 'increasing';
-    trendEmoji = '↗️';
-    message = 'Consider reviewing your budget for this category';
+    trend = "increasing";
+    trendEmoji = "↗️";
+    message = "Consider reviewing your budget for this category";
   } else if (percentageChange < -10) {
-    trend = 'decreasing';
-    trendEmoji = '↘️';
-    message = 'Great job reducing spending in this category!';
+    trend = "decreasing";
+    trendEmoji = "↘️";
+    message = "Great job reducing spending in this category!";
   } else {
-    trend = 'stable';
-    trendEmoji = '➡️';
-    message = 'Your spending is consistent in this category';
+    trend = "stable";
+    trendEmoji = "➡️";
+    message = "Your spending is consistent in this category";
   }
 
   // Format comparison text
-  const changeDirection = percentageChange > 0 ? '+' : '';
-  const comparisonText = `${changeDirection}${percentageChange.toFixed(1)}% compared to previous weeks`;
+  const changeDirection = percentageChange > 0 ? "+" : "";
+  const comparisonText = `${changeDirection}${percentageChange.toFixed(
+    1
+  )}% compared to previous weeks`;
 
   return {
     trend,
@@ -94,13 +101,15 @@ export function analyzeSpendingTrend(chartData: WeekData[]): SpendingInsight | n
  * @param chartData Array of weekly spending data
  * @returns Index and data of peak week, or null if empty
  */
-export function findPeakWeek(chartData: WeekData[]): { week: string; amount: number } | null {
+export function findPeakWeek(
+  chartData: WeekData[]
+): { week: string; amount: number } | null {
   if (!chartData || chartData.length === 0) {
     return null;
   }
 
   // Filter out weeks with zero spending
-  const nonZeroWeeks = chartData.filter(week => week.amount > 0);
+  const nonZeroWeeks = chartData.filter((week) => week.amount > 0);
 
   if (nonZeroWeeks.length === 0) {
     return null;
@@ -135,7 +144,7 @@ export function calculateRecentTrend(chartData: WeekData[]): {
   }
 
   // Filter out weeks with zero spending
-  const nonZeroWeeks = chartData.filter(week => week.amount > 0);
+  const nonZeroWeeks = chartData.filter((week) => week.amount > 0);
 
   if (nonZeroWeeks.length < 4) {
     return null;
@@ -148,10 +157,14 @@ export function calculateRecentTrend(chartData: WeekData[]): {
     return null;
   }
 
-  const lastFourAvg = lastFour.reduce((sum, week) => sum + week.amount, 0) / lastFour.length;
-  const previousFourAvg = previousFour.reduce((sum, week) => sum + week.amount, 0) / previousFour.length;
+  const lastFourAvg =
+    lastFour.reduce((sum, week) => sum + week.amount, 0) / lastFour.length;
+  const previousFourAvg =
+    previousFour.reduce((sum, week) => sum + week.amount, 0) /
+    previousFour.length;
 
-  const percentageChange = ((lastFourAvg - previousFourAvg) / (previousFourAvg || 1)) * 100;
+  const percentageChange =
+    ((lastFourAvg - previousFourAvg) / (previousFourAvg || 1)) * 100;
 
   return {
     lastFourAvg,
