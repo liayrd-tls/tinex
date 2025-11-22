@@ -55,9 +55,10 @@ core/
 ├── repositories/     # Firebase data access layer
 └── services/         # (Reserved for future business logic)
 
-modules/              # Feature-specific components
+modules/              # Feature-specific components and business logic
 ├── transactions/     # AddTransactionForm, etc.
 ├── accounts/         # AddAccountForm, etc.
+├── analytics/        # SpendingInsights, SpendingTrendAnalyzer, etc.
 └── (others)/
 
 shared/
@@ -66,6 +67,43 @@ shared/
 ├── utils/            # Helper functions (cn for className merging)
 └── config/           # Constants (FIREBASE_COLLECTIONS, etc.)
 ```
+
+### Modular Architecture Principles
+
+**IMPORTANT**: Always prefer modular architecture. Create reusable modules instead of implementing logic directly in pages.
+
+**When to create a module:**
+1. Business logic that could be reused (calculations, analysis, transformations)
+2. Complex UI components specific to a feature
+3. Related functionality that should be grouped together
+4. Code that should be testable in isolation
+
+**Module structure:**
+```
+modules/
+└── feature-name/
+    ├── index.ts              # Public API exports
+    ├── FeatureComponent.tsx  # React components
+    ├── featureLogic.ts       # Business logic functions
+    └── types.ts              # TypeScript interfaces (if needed)
+```
+
+**Example - Analytics Module:**
+```typescript
+// modules/analytics/index.ts
+export { default as SpendingInsights } from './SpendingInsights';
+export { analyzeSpendingTrend } from './SpendingTrendAnalyzer';
+
+// Usage in pages
+import { SpendingInsights } from '@/modules/analytics';
+```
+
+**Benefits:**
+- Easy to test business logic separately from UI
+- Clear separation of concerns
+- Reusable across different pages
+- Better code organization
+- Easier to maintain and refactor
 
 ### Key Implementation Details
 

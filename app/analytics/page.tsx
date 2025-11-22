@@ -663,7 +663,7 @@ function AnalyticsContent() {
                       returnToParams.set('endDate', endDate);
                       const returnTo = `/analytics?${returnToParams.toString()}`;
 
-                      router.push(`/transactions?categoryId=${cat.id}&startDate=${startDate}&endDate=${endDate}&returnTo=${encodeURIComponent(returnTo)}`);
+                      router.push(`/transactions/category/${cat.id}?startDate=${startDate}&endDate=${endDate}&returnTo=${encodeURIComponent(returnTo)}`);
                     }}
                     className="w-full space-y-2 text-left hover:bg-muted/30 p-2 -m-2 rounded-lg transition-colors"
                   >
@@ -731,7 +731,7 @@ function AnalyticsContent() {
                       returnToParams.set('endDate', endDate);
                       const returnTo = `/analytics?${returnToParams.toString()}`;
 
-                      router.push(`/transactions?categoryId=${cat.id}&startDate=${startDate}&endDate=${endDate}&returnTo=${encodeURIComponent(returnTo)}`);
+                      router.push(`/transactions/category/${cat.id}?startDate=${startDate}&endDate=${endDate}&returnTo=${encodeURIComponent(returnTo)}`);
                     }}
                     className="w-full space-y-2 text-left hover:bg-muted/30 p-2 -m-2 rounded-lg transition-colors"
                   >
