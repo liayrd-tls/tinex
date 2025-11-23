@@ -7,19 +7,15 @@ import { auth } from '@/lib/firebase';
 import BottomNav from '@/shared/components/layout/BottomNav';
 import { Card, CardContent, CardTitle } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui';
+import TransactionListItem from '@/shared/components/ui/TransactionListItem';
 import { Filter, X, MoreHorizontal, ArrowLeft } from 'lucide-react';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
 import { accountRepository } from '@/core/repositories/AccountRepository';
-import { Transaction, Category, Tag, Account, CURRENCIES, SYSTEM_CATEGORIES } from '@/core/models';
+import { Transaction, Category, Tag, Account, SYSTEM_CATEGORIES } from '@/core/models';
 import { cn } from '@/shared/utils/cn';
 import { CATEGORY_ICONS } from '@/shared/config/icons';
-
-// Helper function to get currency symbol
-const getCurrencySymbol = (currency: string) => {
-  return CURRENCIES.find((c) => c.value === currency)?.symbol || currency;
-};
 
 function TransactionsContent() {
   const [user, setUser] = useState<{ uid: string } | null>(null);
@@ -290,14 +286,15 @@ function TransactionsContent() {
                     <div className="divide-y divide-border">
                       {txns.map((txn) => {
                         const category = categories.find((c) => c.id === txn.categoryId);
-                        const IconComponent = category
-                          ? CATEGORY_ICONS[category.icon as keyof typeof CATEGORY_ICONS] || MoreHorizontal
-                          : MoreHorizontal;
                         const transactionTags = tags.filter((t) => txn.tags?.includes(t.id));
 
                         return (
-                          <div
+                          <TransactionListItem
                             key={txn.id}
+                            transaction={txn}
+                            category={category}
+                            tags={transactionTags}
+                            accountName={getAccountName(txn.accountId)}
                             onClick={() => {
                               // Build return URL with current filters
                               const params = new URLSearchParams();
@@ -312,81 +309,8 @@ function TransactionsContent() {
 
                               router.push(`/transactions/${txn.id}?returnTo=${encodeURIComponent(returnUrl)}`);
                             }}
-                            className="flex items-center gap-3 p-3 relative overflow-hidden hover:bg-muted/30 transition-colors cursor-pointer"
-                          >
-                            {/* Side gradient bar */}
-                            {category && (
-                              <div
-                                className="absolute left-0 top-0 bottom-0 w-1"
-                                style={{
-                                  background: `linear-gradient(to bottom, ${category.color}, ${category.color}80)`,
-                                }}
-                              />
-                            )}
-
-                            {/* Category icon */}
-                            <div
-                              onClick={(e) => handleCategoryIconClick(e, txn)}
-                              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ml-2 hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
-                              style={{
-                                backgroundColor: category ? `${category.color}20` : '#6b728020',
-                              }}
-                              title="Click to change category"
-                            >
-                              <IconComponent
-                                className="h-5 w-5"
-                                style={{ color: category?.color || '#6b7280' }}
-                              />
-                            </div>
-
-                            {/* Transaction details */}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{txn.description}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-xs text-muted-foreground">
-                                  {new Date(txn.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                </p>
-                                <span className="text-xs text-muted-foreground">•</span>
-                                <p className="text-xs text-muted-foreground">
-                                  {getAccountName(txn.accountId)}
-                                </p>
-                                {category && (
-                                  <span className="text-xs text-muted-foreground">•</span>
-                                )}
-                                {category && (
-                                  <p className="text-xs text-muted-foreground">{category.name}</p>
-                                )}
-                              </div>
-                              {transactionTags.length > 0 && (
-                                <div className="flex gap-1 flex-wrap mt-1">
-                                  {transactionTags.map((tag) => (
-                                    <span
-                                      key={tag.id}
-                                      className="px-2 py-0.5 rounded-full text-xs"
-                                      style={{
-                                        backgroundColor: `${tag.color}20`,
-                                        color: tag.color,
-                                      }}
-                                    >
-                                      {tag.name}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Amount */}
-                            <p
-                              className={cn(
-                                'text-sm font-semibold flex-shrink-0',
-                                txn.type === 'income' ? 'text-success' : 'text-destructive'
-                              )}
-                            >
-                              {txn.type === 'income' ? '+' : '-'}
-                              {getCurrencySymbol(txn.currency)}
-                              {txn.amount.toFixed(2)}
-                            </p>
-                          </div>
+                            onCategoryIconClick={handleCategoryIconClick}
+                          />
                         );
                       })}
                     </div>

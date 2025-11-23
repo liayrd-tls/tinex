@@ -1,5 +1,5 @@
 'use client';
-import { MoreHorizontal, Plus, LogOut, Wallet, TrendingUp, TrendingDown, Upload } from 'lucide-react';
+import { Plus, LogOut, Wallet, TrendingUp, TrendingDown, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -11,13 +11,14 @@ import BottomNav from '@/shared/components/layout/BottomNav';
 import FAB from '@/shared/components/ui/FAB';
 import Modal from '@/shared/components/ui/Modal';
 import AddTransactionForm from '@/modules/transactions/AddTransactionForm';
+import TransactionListItem from '@/shared/components/ui/TransactionListItem';
 
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { accountRepository } from '@/core/repositories/AccountRepository';
 import { categoryRepository } from '@/core/repositories/CategoryRepository';
 import { tagRepository } from '@/core/repositories/TagRepository';
 import { userSettingsRepository } from '@/core/repositories/UserSettingsRepository';
-import { CreateTransactionInput, Transaction, Account, Category, Tag, UserSettings } from '@/core/models';
+import { CreateTransactionInput, Transaction, Account, Category, Tag, UserSettings, SYSTEM_CATEGORIES } from '@/core/models';
 import { convertMultipleCurrencies, convertCurrency, formatCurrency } from '@/shared/services/currencyService';
 import { cn } from '@/shared/utils/cn';
 import { CATEGORY_ICONS } from '@/shared/config/icons';
@@ -28,8 +29,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
+  const [showAllAccounts, setShowAllAccounts] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -73,12 +76,13 @@ export default function DashboardPage() {
         transactionCount: allTxns.filter(txn => txn.accountId === account.id).length,
       }));
 
-      // Sort by transaction count and take top 3
-      const topAccounts = accountsWithCount
-        .sort((a, b) => b.transactionCount - a.transactionCount)
-        .slice(0, 3);
+      // Sort by transaction count
+      const sortedAccounts = accountsWithCount
+        .sort((a, b) => b.transactionCount - a.transactionCount);
 
-      setAccounts(topAccounts);
+      // Store all accounts and top 3
+      setAllAccounts(sortedAccounts);
+      setAccounts(sortedAccounts.slice(0, 3));
 
       // Calculate total balance in base currency
       if (userAccounts.length > 0) {
@@ -126,11 +130,24 @@ export default function DashboardPage() {
         return txnDate >= startOfMonth && txnDate <= endOfMonth;
       });
 
+      // Get system category IDs (Transfer Out, Transfer In)
+      const systemCategoryIds = userCategories
+        .filter(cat =>
+          cat.name === SYSTEM_CATEGORIES.TRANSFER_OUT ||
+          cat.name === SYSTEM_CATEGORIES.TRANSFER_IN
+        )
+        .map(cat => cat.id);
+
+      // Filter out transfer transactions
+      const nonTransferTxns = monthTxns.filter(txn =>
+        !systemCategoryIds.includes(txn.categoryId)
+      );
+
       // Convert all transactions to base currency and calculate stats
       let income = 0;
       let expenses = 0;
 
-      for (const txn of monthTxns) {
+      for (const txn of nonTransferTxns) {
         const convertedAmount = await convertCurrency(txn.amount, txn.currency, settings.baseCurrency);
         if (txn.type === 'income') {
           income += convertedAmount;
@@ -143,11 +160,15 @@ export default function DashboardPage() {
         income,
         expenses,
         balance: income - expenses,
-        transactionCount: monthTxns.length,
+        transactionCount: nonTransferTxns.length,
       });
     } catch (error) {
       console.error('Failed to load data:', error);
     }
+  };
+
+  const getAccountName = (accountId: string) => {
+    return allAccounts.find((acc) => acc.id === accountId)?.name || 'Unknown';
   };
 
   const handleAddTransaction = async (data: CreateTransactionInput, currency: string) => {
@@ -225,7 +246,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-1 text-muted-foreground">
                 <Wallet className="h-3 w-3" />
-                <span>{accounts.length} account{accounts.length !== 1 ? 's' : ''}</span>
+                <span>{allAccounts.length} account{allAccounts.length !== 1 ? 's' : ''}</span>
               </div>
               <div className="flex items-center gap-1 text-success">
                 <TrendingUp className="h-3 w-3" />
@@ -240,25 +261,16 @@ export default function DashboardPage() {
         </Card>
 
         {/* Accounts Overview - Top 3 by transaction count */}
-        {accounts.length > 0 && (
+        {allAccounts.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Top Accounts</CardTitle>
-                <Link href="/accounts">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                  >
-                    View All
-                  </Button>
-                </Link>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-border">
-                {accounts.map((account) => {
+                {(showAllAccounts ? allAccounts : accounts).map((account) => {
                   const AccountIcon = account.icon
                     ? CATEGORY_ICONS[account.icon as keyof typeof CATEGORY_ICONS] || Wallet
                     : Wallet;
@@ -287,13 +299,21 @@ export default function DashboardPage() {
                   </Link>
                   );
                 })}
+                {allAccounts.length > 3 && (
+                  <button
+                    onClick={() => setShowAllAccounts(!showAllAccounts)}
+                    className="w-full p-3 text-sm text-muted-foreground hover:bg-muted/30 transition-colors text-center font-medium"
+                  >
+                    {showAllAccounts ? 'Show less' : 'Show more'}
+                  </button>
+                )}
               </div>
             </CardContent>
           </Card>
         )}
 
         {/* No Accounts Warning */}
-        {accounts.length === 0 && (
+        {allAccounts.length === 0 && (
           <Card className="border-destructive/50 bg-destructive/5">
             <CardHeader>
               <CardTitle className="text-base">No Accounts</CardTitle>
@@ -355,78 +375,24 @@ export default function DashboardPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {transactions.slice(0, 5).map((txn) => {
-                const category = categories.find((c) => c.id === txn.categoryId);
-                const IconComponent = category
-                  ? CATEGORY_ICONS[category.icon as keyof typeof CATEGORY_ICONS] || MoreHorizontal
-                  : MoreHorizontal;
-                const transactionTags = tags.filter((t) => txn.tags?.includes(t.id));
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
+                {transactions.slice(0, 5).map((txn) => {
+                  const category = categories.find((c) => c.id === txn.categoryId);
+                  const transactionTags = tags.filter((t) => txn.tags?.includes(t.id));
 
-                return (
-                  <div
-                    key={txn.id}
-                    onClick={() => router.push(`/transactions/${txn.id}`)}
-                    className="flex items-center gap-3 p-3 rounded-md bg-muted/30 relative overflow-hidden cursor-pointer hover:bg-muted/50 transition-colors"
-                  >
-                    {/* Side gradient bar */}
-                    {category && (
-                      <div
-                        className="absolute left-0 top-0 bottom-0 w-1"
-                        style={{
-                          background: `linear-gradient(to bottom, ${category.color}, ${category.color}80)`,
-                        }}
-                      />
-                    )}
-
-                    {/* Category icon */}
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ml-2"
-                      style={{ backgroundColor: category ? `${category.color}20` : '#6b728020' }}
-                    >
-                      <IconComponent
-                        className="h-5 w-5"
-                        style={{ color: category?.color || '#6b7280' }}
-                      />
-                    </div>
-
-                    {/* Transaction details */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{txn.description}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(txn.date).toLocaleDateString()} {new Date(txn.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                        </p>
-                        {transactionTags.length > 0 && (
-                          <div className="flex gap-1 flex-wrap">
-                            {transactionTags.map((tag) => (
-                              <span
-                                key={tag.id}
-                                className="px-2 py-0.5 rounded-full text-xs"
-                                style={{
-                                  backgroundColor: `${tag.color}20`,
-                                  color: tag.color,
-                                }}
-                              >
-                                {tag.name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Amount */}
-                    <p
-                      className={`text-sm font-semibold flex-shrink-0 ${
-                        txn.type === 'income' ? 'text-success' : 'text-destructive'
-                      }`}
-                    >
-                      {txn.type === 'income' ? '+' : '-'}${txn.amount.toFixed(2)}
-                    </p>
-                  </div>
-                );
-              })}
+                  return (
+                    <TransactionListItem
+                      key={txn.id}
+                      transaction={txn}
+                      category={category}
+                      tags={transactionTags}
+                      accountName={getAccountName(txn.accountId)}
+                      returnTo="/dashboard"
+                    />
+                  );
+                })}
+              </div>
             </CardContent>
           </Card>
         )}
