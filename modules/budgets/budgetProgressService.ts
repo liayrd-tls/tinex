@@ -3,9 +3,10 @@
  * Calculates budget progress by analyzing transactions
  */
 
-import { Budget, BudgetProgress, Transaction, Currency } from '@/core/models';
+import { Budget, BudgetProgress, Currency } from '@/core/models';
 import { transactionRepository } from '@/core/repositories/TransactionRepository';
 import { convertCurrency } from '@/shared/services/currencyService';
+import { getCurrentPeriodDates } from './budgetUtils';
 
 /**
  * Calculate budget progress for a single budget
@@ -15,11 +16,15 @@ export async function calculateBudgetProgress(
   userId: string,
   userCurrency: Currency
 ): Promise<BudgetProgress> {
-  // Get transactions for the budget period and category
+  // Recalculate period dates based on current date
+  // This ensures weekly/monthly budgets always show the current week/month
+  const currentPeriod = getCurrentPeriodDates(budget.period);
+
+  // Get transactions for the current period and category
   const transactions = await transactionRepository.getByDateRange(
     userId,
-    budget.startDate,
-    budget.endDate || new Date()
+    currentPeriod.start,
+    currentPeriod.end
   );
 
   // Filter transactions by category and type (only expenses)
@@ -50,8 +55,15 @@ export async function calculateBudgetProgress(
   const isOverBudget = totalSpent > budget.amount;
   const shouldAlert = percentage >= budget.alertThreshold;
 
+  // Update budget with current period dates
+  const updatedBudget = {
+    ...budget,
+    startDate: currentPeriod.start,
+    endDate: currentPeriod.end,
+  };
+
   return {
-    budget,
+    budget: updatedBudget,
     spent: totalSpent,
     remaining,
     percentage,
