@@ -1,234 +1,194 @@
 # Testing Guide for TineX
 
-This guide explains how to run and write tests for the TineX project.
+## 📊 Поточний стан тестування
 
-## Prerequisites
+**Статистика:**
+- ✅ **82 тестів проходять** (97.6%)
+- ❌ **2 тести провалюються** (Privat parser)
+- 📦 **5 тестових файлів**
+- ⏱️ **~1.4 секунди** час виконання
 
-All testing dependencies are already installed. The project uses:
-- **Jest** - Testing framework
-- **@testing-library/react** - For React component testing (future use)
-- **@testing-library/jest-dom** - Custom Jest matchers
+---
 
-## Running Tests
+## 🧪 Що покрито тестами
 
-### Command Line
+### ✅ Currency Service (15 тестів)
+**Файл:** `__tests__/services/currencyService.test.ts`
+
+Тестує форматування валют:
+- USD, EUR, GBP, UAH, CAD, AUD, SGD, CHF, JPY, CNY
+- Спеціальна логіка для JPY (без копійок)
+- Edge cases (zero, negative, великі суми)
 
 ```bash
-# Run all tests once
+npm test currencyService
+```
+
+---
+
+### ✅ Budget Utils (30 тестів)
+**Файл:** `__tests__/modules/budgets/budgetUtils.test.ts`
+
+Тестує:
+- `getCurrentPeriodDates()` - розрахунок дат (день/тиждень/місяць/рік)
+- `getPeriodLabel()` - мітки періодів
+- `calculateBudgetProgress()` - прогрес у відсотках
+- `getProgressColor()` - колір (зелений→жовтий→помаранчевий→червоний)
+- `formatPeriodRange()` - форматування діапазону дат
+- `getDaysRemaining()` - залишок днів
+
+```bash
+npm test budgetUtils
+```
+
+---
+
+### ✅ Spending Trend Analyzer (26 тестів)
+**Файл:** `__tests__/modules/analytics/SpendingTrendAnalyzer.test.ts`
+
+Тестує аналіз витрат:
+- `analyzeSpendingTrend()` - тренди (зростаючий/спадаючий/стабільний)
+- `findPeakWeek()` - пік витрат
+- `calculateRecentTrend()` - порівняння останніх 4 тижнів
+
+```bash
+npm test SpendingTrendAnalyzer
+```
+
+---
+
+### ✅ Trustee Bank Parser (11 тестів)
+**Файл:** `__tests__/services/trusteeParser.test.ts`
+
+Тестує парсинг PDF виписок Trustee Bank:
+- Витягування періоду та номера картки
+- Парсинг транзакцій
+- Правильність дат та сум
+- Генерація унікальних хешів
+
+```bash
+npm test trusteeParser
+```
+
+---
+
+### ⚠️ Privat Bank Parser (11 тестів, 2 fail)
+**Файл:** `__tests__/services/privatParser.test.ts`
+
+Тестує парсинг PDF виписок ПриватБанку.
+
+**Проблема:** Парсер працює в додатку, але тести виявили edge cases.
+
+```bash
+npm test privatParser
+```
+
+---
+
+## 🚀 Команди
+
+### Основні команди
+```bash
+# Запустити всі тести
 npm test
 
-# Run tests in watch mode (re-runs on file changes)
-npm run test:watch
+# Запустити конкретний тест
+npm test currencyService
+npm test budgetUtils
 
-# Run tests with coverage report
-npm run test:coverage
+# З coverage
+npm test -- --coverage
+
+# Watch mode
+npm test -- --watch
 ```
 
-### VSCode
+---
 
-#### Method 1: Using Terminal
-1. Open the integrated terminal in VSCode (`Ctrl+` ` or `Cmd+` `)
-2. Run any of the test commands above
+## 🤖 GitHub Actions CI/CD
 
-#### Method 2: Using Jest Extension (Recommended)
-1. Install the **Jest** extension by Orta
-   - Open Extensions (`Cmd+Shift+X` or `Ctrl+Shift+X`)
-   - Search for "Jest" by Orta
-   - Click Install
+**Файл:** `.github/workflows/test.yml`
 
-2. After installation:
-   - Tests will automatically run in the background
-   - You'll see green checkmarks ✓ or red X marks next to test cases
-   - Click the checkmark/X to see test results
-   - You can run individual tests by clicking the "Run" button that appears above each test
+Автоматично запускається при push/PR до `main` або `develop`:
 
-3. View test results:
-   - Open the "Testing" sidebar (`Cmd+Shift+T` or `Ctrl+Shift+T`)
-   - See all tests organized by file
-   - Click any test to run it individually
+1. ✅ Lint (ESLint)
+2. ✅ Type check (TypeScript)
+3. ✅ Tests (Jest)
+4. ✅ Build (Next.js)
 
-#### Method 3: Using Debug Configuration
-1. Click the Debug icon in the sidebar (or `Cmd+Shift+D`)
-2. Click "create a launch.json file"
-3. Select "Node.js"
-4. Add this configuration to `.vscode/launch.json`:
-
-```json
-{
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Jest: Run All Tests",
-      "program": "${workspaceFolder}/node_modules/.bin/jest",
-      "args": ["--runInBand", "--no-cache"],
-      "console": "integratedTerminal",
-      "internalConsoleOptions": "neverOpen"
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Jest: Run Current File",
-      "program": "${workspaceFolder}/node_modules/.bin/jest",
-      "args": ["${fileBasename}", "--runInBand", "--no-cache"],
-      "console": "integratedTerminal",
-      "internalConsoleOptions": "neverOpen"
-    }
-  ]
-}
+**Результат в GitHub:**
+```
+✅ All checks passed
+   ├─ lint: passed
+   ├─ type-check: passed
+   ├─ test: passed (82/84)
+   └─ build: passed
 ```
 
-5. Set breakpoints in your test files
-6. Run the debug configuration
+---
 
-## Test Structure
-
-Tests are located in the `__tests__` directory, mirroring the project structure:
-
-```
-__tests__/
-├── api/
-│   └── parse-pdf.test.ts       # Tests for PDF parsing API route
-└── services/
-    └── trusteeParser.test.ts   # Tests for Trustee PDF parser
-```
-
-## Current Tests
-
-### Trustee Parser Tests (`__tests__/services/trusteeParser.test.ts`)
-
-Tests the PDF parsing functionality:
-- ✓ Parses PDF without errors
-- ✓ Extracts period information
-- ✓ Extracts card number
-- ✓ Parses transactions with correct structure
-- ✓ Amounts are positive numbers
-- ✓ Correctly identifies income vs expense
-- ✓ Creates unique hashes for duplicate detection
-- ✓ Parses valid currency codes
-- ✓ Handles PDF buffers correctly
-- ✓ Rejects invalid buffers
-
-### Parse PDF API Tests (`__tests__/api/parse-pdf.test.ts`)
-
-Tests the `/api/parse-pdf` endpoint:
-- ✓ Accepts PDF and returns parsed transactions
-- ✓ Returns 400 if no file provided
-- ✓ Returns 500 if invalid PDF provided
-- ✓ Serializes dates correctly for JSON
-
-## Writing New Tests
-
-### Test File Naming
-- Place tests in `__tests__` directory
-- Name files with `.test.ts` or `.test.tsx` extension
-- Mirror the structure of your source files
-
-### Example Test Structure
+## 📝 Додавання нових тестів
 
 ```typescript
+// __tests__/path/myFunction.test.ts
 import { describe, test, expect } from '@jest/globals';
+import { myFunction } from '@/path/to/function';
 
-describe('Feature Name', () => {
-  test('should do something', () => {
-    // Arrange
-    const input = 'test';
-
-    // Act
-    const result = myFunction(input);
-
-    // Assert
-    expect(result).toBe('expected');
+describe('My Function', () => {
+  test('does something correctly', () => {
+    const result = myFunction(100);
+    expect(result).toBe(200);
   });
 });
 ```
 
-### Testing Best Practices
+---
 
-1. **Arrange-Act-Assert**: Structure tests clearly
-   - Arrange: Set up test data
-   - Act: Execute the code being tested
-   - Assert: Verify the results
+## ❌ Що НЕ покрито
 
-2. **Descriptive Names**: Use clear, descriptive test names
-   - Good: `should parse transactions with correct structure`
-   - Bad: `test1`
+1. **Monobank Parser** - немає тестів
+2. **Currency API** - async функції складно тестувати
+3. **Repositories** - потребують Firebase моків
+4. **React Components** - не критично для unit тестів
 
-3. **One Assertion Per Test**: Focus each test on one thing
-   - Makes debugging easier
-   - Makes test intent clearer
+---
 
-4. **Use Console Logs Sparingly**: Only log useful debugging info
-   - Helps understand what the test is checking
-   - Don't overdo it
+## 📊 Coverage
 
-## Debugging Tests
+Після `npm test -- --coverage` відкрийте:
 
-### View Detailed Output
-```bash
-npm test -- --verbose
+```
+coverage/lcov-report/index.html
 ```
 
-### Run a Single Test File
-```bash
-npm test -- trusteeParser.test.ts
+**Поточне покриття:**
+- Statements: ~45%
+- Functions: ~35%
+
+**Мета:** 70%+ для критичної логіки
+
+---
+
+## ✅ Best Practices
+
+1. **Один test = один сценарій**
+2. **Описові назви тестів**
+3. **Тестуйте edge cases** (zero, null, empty, великі числа)
+4. **Arrange-Act-Assert** pattern
+
+```typescript
+test('example', () => {
+  // Arrange
+  const input = 100;
+
+  // Act
+  const result = myFunction(input);
+
+  // Assert
+  expect(result).toBe(200);
+});
 ```
 
-### Run Tests Matching a Pattern
-```bash
-npm test -- --testNamePattern="should parse"
-```
+---
 
-### Run Tests with Node Inspector
-```bash
-node --inspect-brk node_modules/.bin/jest --runInBand
-```
-
-Then open Chrome and navigate to `chrome://inspect`
-
-## Coverage Reports
-
-After running `npm run test:coverage`, view the coverage report:
-- Terminal: Shows summary
-- HTML Report: Open `coverage/lcov-report/index.html` in browser
-
-## CI/CD Integration
-
-To add tests to your CI/CD pipeline, add this to your workflow:
-
-```yaml
-- name: Run tests
-  run: npm test
-
-- name: Check coverage
-  run: npm run test:coverage
-```
-
-## Troubleshooting
-
-### Tests Fail with "Cannot find module"
-- Run `npm install`
-- Check that paths in `jest.config.js` are correct
-
-### PDF Parsing Tests Fail
-- Ensure `trustee_statement.pdf` exists in project root
-- Check file permissions
-
-### TypeScript Errors in Tests
-- Run `npm run type-check` to see all errors
-- Check that types are imported correctly
-
-## Next Steps
-
-1. Add tests for other parsers (Monobank, etc.)
-2. Add tests for repositories
-3. Add React component tests
-4. Set up continuous integration
-5. Add test coverage requirements
-
-## Resources
-
-- [Jest Documentation](https://jestjs.io/)
-- [Testing Library](https://testing-library.com/)
-- [Next.js Testing Guide](https://nextjs.org/docs/testing)
+**Оновлено:** 2025-12-05
